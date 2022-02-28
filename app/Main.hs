@@ -28,25 +28,13 @@ main = do
   putStrLn $ take 10000 $ show $ negBinomial 0.61803398875 2
 
 roll2d6 :: Dist Int
-roll2d6 = do
-  a <- die 6
-  b <- die 6
-  return (a + b)
+roll2d6 = 2 `d` 6
 
-twiced6 :: Dist Int
-twiced6 = do
-  a <- die 6
-  return (2 * a)
+rolld6Times2 :: Dist Int
+rolld6Times2 = 2 * die 6
 
 roll2d6Plus3 :: Dist Int
-roll2d6Plus3 = do
-  a <- die 6
-  b <- die 6
-  return (a + b + 3)
+roll2d6Plus3 = 2 `d` 6 + 3
 
 roll2d6Plusd4 :: Dist Int
-roll2d6Plusd4 = do
-  a <- die 6
-  b <- die 6
-  c <- die 4
-  return (a + b + c)
+roll2d6Plusd4 = 2 `d` 6 + die 4

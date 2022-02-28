@@ -20,6 +20,7 @@ import qualified Data.Map as Map
 import qualified Data.PQueue.Prio.Max as MaxPQueue
 import Data.Tuple (swap)
 import System.Random (randomRIO)
+import Control.Applicative (liftA2)
 
 type Probability = Rational
 
@@ -61,6 +62,19 @@ joinDist dist =
             MaxPQueue.insert (p * q) (EmitItem (p * q) x) $
               MaxPQueue.insert (p * q) (VisitOneRow p (Dist xs)) queue'
         ((_, EmitItem p x), queue') -> (p, x) : fromQueue queue'
+
+instance Num a => Num (Dist a) where
+    (+) = liftA2 (+)
+    (-) = liftA2 (-)
+    (*) = liftA2 (*)
+    abs = fmap abs
+    signum = fmap signum
+    fromInteger = pure . fromInteger
+    negate = fmap negate
+
+instance Fractional a => Fractional (Dist a) where
+    recip = fmap recip
+    fromRational = pure . fromRational
 
 simplify :: Ord a => Dist a -> Dist a
 simplify r = Dist $ swap <$> Map.toList (Map.fromListWith (+) (swap <$> unDist r))
