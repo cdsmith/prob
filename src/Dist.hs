@@ -7,6 +7,7 @@ module Dist
     uniform,
     bernoulli,
     probability,
+    possibilities,
     conditional,
     sample,
   )
@@ -114,8 +115,14 @@ bernoulli p = toDist [(p, True), (1 - p, False)]
 probability :: (a -> Bool) -> Dist a -> Probability
 probability event = sum . fmap fst . filter (event . snd) . unDist
 
--- | Produces the conditional probability distribution, assuming some event.  The
--- event is represented as a predicate on values.
+-- | Gives the list of all possibile values of a given probability distribution.
+-- This will often contain duplicate values, which can be removed using 'nub',
+-- 'Data.Set.fromList', etc.
+possibilities :: Dist a -> [a]
+possibilities = fmap snd . unDist
+
+-- | Produces the conditional probability distribution, assuming some event.
+-- The event is represented as a predicate on values.
 conditional :: (a -> Bool) -> Dist a -> Dist a
 conditional event dist = Dist (map (first (/ p_event)) filtered)
   where
