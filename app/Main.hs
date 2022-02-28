@@ -20,7 +20,7 @@ negBinomial p r = do
 
 -- This is the D&D rule for rolling stats: roll 4d6 and drop the lowest.
 dndStat :: Dist Int
-dndStat = sum . dropLowest 1 <$> replicateM 3 (die 6)
+dndStat = sum . dropLowest 1 <$> replicateM 4 (die 6)
 
 main :: IO ()
 main = do
