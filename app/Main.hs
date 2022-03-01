@@ -25,7 +25,7 @@ dndStat = sum . dropLowest 1 <$> replicateM 4 (die 6)
 main :: IO ()
 main = do
   hSetBuffering stdout NoBuffering
-  putStrLn $ take 10000 $ show $ negBinomial 0.61803398875 2
+  putStrLn $ take 10000 $ show $ negBinomial 0.61803398874 2
 
 roll2d6 :: Dist Int
 roll2d6 = 2 `d` 6

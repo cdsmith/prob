@@ -19,7 +19,6 @@ import Data.Bifunctor (first)
 import Data.Function (on)
 import qualified Data.List as List
 import qualified Data.Map as Map
-import qualified Data.PQueue.Prio.Max as MaxPQueue
 import Data.Tuple (swap)
 import System.Random (randomRIO)
 
@@ -28,15 +27,7 @@ import System.Random (randomRIO)
 type Probability = Rational
 
 -- | A probability distribution of values.
-newtype Dist a = Dist
-  { -- | Two invariants are maintained on the value:
-    -- 1. Entries occur in non-increasing order of probability.
-    -- 2. The sum of the probabilities is 1.
-    --
-    -- In general, this may contain duplicate values.  If the distribution is
-    -- finite, then duplicate values can be removed by 'simplify'.
-    unDist :: [(Probability, a)]
-  }
+newtype Dist a = Dist {unDist :: [(Probability, a)]}
   deriving (Functor, Show)
 
 -- | A helper function to build a 'Dist' in the correct order.
@@ -50,34 +41,16 @@ instance Applicative Dist where
 instance Monad Dist where
   m >>= f = joinDist (fmap f m)
 
--- | This is a helper type used for the task queue when joining distributions.
-data JoinStep a
-  = VisitRows (Dist (Dist a))
-  | VisitOneRow Probability (Dist a)
-  | EmitItem Probability a
-
--- The join function for the 'Dist' monad.  This is where the magic happens to
--- keep everything working for infinite distributions.  The idea is to lazily
--- produce entries in decreasing order by using a *finite* priority queue of
--- tasks.  The priority of a task is set to the maximum probability that might
--- be output as any (direct or indirect) result of that task running.
+-- The join function for the 'Dist' monad.  This is a little tricky because it
+-- needs to work properly for infinite distributions.
 joinDist :: Dist (Dist a) -> Dist a
-joinDist = Dist . fromQueue . MaxPQueue.singleton 1 . VisitRows
+joinDist (Dist dist) = Dist (flatten [[(p * q, x) | (q, x) <- dist'] | (p, Dist dist') <- dist])
   where
-    fromQueue queue
-      | MaxPQueue.null queue = []
-      | otherwise = case MaxPQueue.deleteFindMax queue of
-        ((_, VisitRows (Dist [])), queue') -> fromQueue queue'
-        ((_, VisitRows (Dist ((p, row) : rows))), queue') ->
-          fromQueue $
-            MaxPQueue.insert p (VisitOneRow p row) $
-              MaxPQueue.insert p (VisitRows (Dist rows)) queue'
-        ((_, VisitOneRow _ (Dist [])), queue') -> fromQueue queue'
-        ((_, VisitOneRow p (Dist ((q, x) : xs))), queue') ->
-          fromQueue $
-            MaxPQueue.insert (p * q) (EmitItem (p * q) x) $
-              MaxPQueue.insert (p * q) (VisitOneRow p (Dist xs)) queue'
-        ((_, EmitItem p x), queue') -> (p, x) : fromQueue queue'
+    flatten [] = []
+    flatten (x : xs) = interleave x (flatten xs)
+
+    interleave [] ys = ys
+    interleave (x : xs) ys = x : interleave ys xs
 
 instance Num a => Num (Dist a) where
   (+) = liftA2 (+)
