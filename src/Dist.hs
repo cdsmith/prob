@@ -8,6 +8,9 @@ module Dist
     bernoulli,
     probability,
     approxProbability,
+    expectation,
+    variance,
+    stddev,
     possibilities,
     finiteConditional,
     conditional,
@@ -101,6 +104,31 @@ approxProbability event = go 0 1 . unDist
     go p q ((q', x) : xs)
       | event x = (p, p + q) : go (p + q') (q - q') xs
       | otherwise = (p, p + q) : go p (q - q') xs
+
+-- | Computes the expected value of a finite distribution.
+--
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
+expectation :: Fractional a => Dist a -> a
+expectation (Dist dist) = sum [ fromRational p * x | (p, x) <- dist ]
+
+-- | Computes the variance of a finite distribution.
+--
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
+variance :: (Real a, Fractional a) => Dist a -> a
+variance dist = expectation ((^ (2 :: Int)) . subtract mean <$> dist)
+  where mean = realToFrac (expectation dist)
+
+-- | Computes the standard deviation of a finite distribution.
+--
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
+stddev :: (Real a, Floating a) => Dist a -> a
+stddev dist = sqrt (variance dist)
 
 -- | Gives the list of all possibile values of a given probability distribution.
 -- This will often contain duplicate values, which can be removed using 'nub',
