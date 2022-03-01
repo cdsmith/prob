@@ -7,6 +7,7 @@ module Dist
     uniform,
     bernoulli,
     probability,
+    approxProbability,
     possibilities,
     conditional,
     sample,
@@ -44,7 +45,8 @@ instance Monad Dist where
 -- The join function for the 'Dist' monad.  This is a little tricky because it
 -- needs to work properly for infinite distributions.
 joinDist :: Dist (Dist a) -> Dist a
-joinDist (Dist dist) = Dist (flatten [[(p * q, x) | (q, x) <- dist'] | (p, Dist dist') <- dist])
+joinDist (Dist dist) =
+  Dist (flatten [[(p * q, x) | (q, x) <- dist'] | (p, Dist dist') <- dist])
   where
     flatten [] = []
     flatten (x : xs) = interleave x (flatten xs)
@@ -85,8 +87,22 @@ bernoulli :: Probability -> Dist Bool
 bernoulli p = toDist [(p, True), (1 - p, False)]
 
 -- | Computes the probability of an event, represented by a predicate on values.
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
 probability :: (a -> Bool) -> Dist a -> Probability
 probability event = sum . fmap fst . filter (event . snd) . unDist
+
+-- | Like probability, but produces a lazy list of ever-improving ranges of
+-- probabilities.  This can be used on infinite distributions, for which the
+-- exact probability cannot be calculated.
+approxProbability :: (a -> Bool) -> Dist a -> [(Probability, Probability)]
+approxProbability event = go 0 1 . unDist
+  where
+    go p _ [] = [(p, p)]
+    go p q ((q', x) : xs)
+      | event x = (p, p + q) : go (p + q') (q - q') xs
+      | otherwise = (p, p + q) : go p (q - q') xs
 
 -- | Gives the list of all possibile values of a given probability distribution.
 -- This will often contain duplicate values, which can be removed using 'nub',

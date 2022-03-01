@@ -1,6 +1,9 @@
+{-# OPTIONS_GHC -Wno-type-defaults #-}
+
 module Main where
 
 import Control.Monad (replicateM)
+import Data.Bifunctor (bimap)
 import Dice
 import Dist
 import System.IO (BufferMode (NoBuffering), hSetBuffering, stdout)
@@ -25,7 +28,12 @@ dndStat = sum . dropLowest 1 <$> replicateM 4 (die 6)
 main :: IO ()
 main = do
   hSetBuffering stdout NoBuffering
-  putStrLn $ take 10000 $ show $ negBinomial 0.61803398874 2
+  print $ probability (== 12) dndStat
+  print $ approxProbability (== 12) dndStat
+  print $
+    take 10000 $
+      map (bimap fromRational fromRational) $
+        approxProbability (== 2) $ negBinomial 0.61803398874 2
 
 roll2d6 :: Dist Int
 roll2d6 = 2 `d` 6
