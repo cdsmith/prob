@@ -18,8 +18,6 @@ where
 import Control.Applicative (liftA2)
 import Control.Monad (ap)
 import Data.Bifunctor (first)
-import Data.Function (on)
-import qualified Data.List as List
 import qualified Data.Map as Map
 import Data.Tuple (swap)
 import System.Random (randomRIO)
@@ -31,10 +29,6 @@ type Probability = Rational
 -- | A probability distribution of values.
 newtype Dist a = Dist {unDist :: [(Probability, a)]}
   deriving (Functor, Show)
-
--- | A helper function to build a 'Dist' in the correct order.
-toDist :: [(Probability, a)] -> Dist a
-toDist = Dist . List.sortBy (compare `on` negate . fst)
 
 instance Applicative Dist where
   pure x = Dist [(1, x)]
@@ -69,13 +63,14 @@ instance Fractional a => Fractional (Dist a) where
   recip = fmap recip
   fromRational = pure . fromRational
 
--- | Simplifies a finite distribution.  Note that this will hang for infinite
--- distributions.  Infinite distributions *include* cases where there are
--- finitely many outcomes, but infinitely many paths to reach those outcomes.
--- for example, the rule "Keep rolling a die until you get a result larger than
--- 2" is an infinite distribution.
+-- | Simplifies a finite distribution.
+--
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
 simplify :: Ord a => Dist a -> Dist a
-simplify r = toDist $ swap <$> Map.toList (Map.fromListWith (+) (swap <$> unDist r))
+simplify (Dist dist) =
+  Dist $ swap <$> Map.toList (Map.fromListWith (+) (swap <$> dist))
 
 -- | A uniform distribution over a list of values.
 uniform :: [a] -> Dist a
@@ -86,9 +81,10 @@ uniform xs = Dist [(recip n, x) | x <- xs]
 -- | A Bernoulli distribution.  This gives True with probability @p@, and False
 -- otherwise.
 bernoulli :: Probability -> Dist Bool
-bernoulli p = toDist [(p, True), (1 - p, False)]
+bernoulli p = Dist [(p, True), (1 - p, False)]
 
 -- | Computes the probability of an event, represented by a predicate on values.
+--
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
@@ -113,6 +109,7 @@ possibilities :: Dist a -> [a]
 possibilities = fmap snd . unDist
 
 -- | Produces the conditional probability distribution, assuming some event.
+--
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
