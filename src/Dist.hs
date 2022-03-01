@@ -9,6 +9,7 @@ module Dist
     probability,
     approxProbability,
     possibilities,
+    finiteConditional,
     conditional,
     sample,
   )
@@ -47,12 +48,13 @@ instance Monad Dist where
 joinDist :: Dist (Dist a) -> Dist a
 joinDist (Dist dist) =
   Dist (flatten [[(p * q, x) | (q, x) <- dist'] | (p, Dist dist') <- dist])
-  where
-    flatten [] = []
-    flatten (x : xs) = interleave x (flatten xs)
 
+flatten :: [[a]] -> [a]
+flatten [] = []
+flatten (x : xs) = interleave x (flatten xs)
+  where
     interleave [] ys = ys
-    interleave (x : xs) ys = x : interleave ys xs
+    interleave (z : zs) ys = z : interleave ys zs
 
 instance Num a => Num (Dist a) where
   (+) = liftA2 (+)
@@ -111,12 +113,25 @@ possibilities :: Dist a -> [a]
 possibilities = fmap snd . unDist
 
 -- | Produces the conditional probability distribution, assuming some event.
--- The event is represented as a predicate on values.
-conditional :: (a -> Bool) -> Dist a -> Dist a
-conditional event dist = Dist (map (first (/ p_event)) filtered)
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
+finiteConditional :: (a -> Bool) -> Dist a -> Dist a
+finiteConditional event dist = Dist (map (first (/ p_event)) filtered)
   where
     filtered = filter (event . snd) (unDist dist)
     p_event = sum (map fst filtered)
+
+-- | Produces the conditional probability distribution, assuming some event.
+-- This function works for all distributions, but always produces an infinite
+-- distribution for non-trivial events.
+conditional :: (a -> Bool) -> Dist a -> Dist a
+conditional event (Dist dist) = Dist table
+  where
+    table = flatten (matches : replacements)
+    matches = filter (event . snd) dist
+    unmatches = filter (not . event . snd) dist
+    replacements = [ map (first (* p)) table | (p, _) <- unmatches ]
 
 -- | Samples the probability distribution to produce a value.
 sample :: Dist a -> IO a

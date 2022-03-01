@@ -3,10 +3,10 @@
 module Main where
 
 import Control.Monad (replicateM)
-import Data.Bifunctor (bimap)
 import Dice
 import Dist
 import System.IO (BufferMode (NoBuffering), hSetBuffering, stdout)
+import Data.Bifunctor (bimap)
 
 -- Given a probability of success, this is the number of failures
 -- before succeeding n times.
@@ -28,12 +28,7 @@ dndStat = sum . dropLowest 1 <$> replicateM 4 (die 6)
 main :: IO ()
 main = do
   hSetBuffering stdout NoBuffering
-  print $ probability (== 12) dndStat
-  print $ approxProbability (== 12) dndStat
-  print $
-    take 10000 $
-      map (bimap fromRational fromRational) $
-        approxProbability (== 2) $ negBinomial 0.61803398874 2
+  print $ map (bimap fromRational fromRational) $ take 1000 $ approxProbability (> 5) $ conditional (> 2) (die 6)
 
 roll2d6 :: Dist Int
 roll2d6 = 2 `d` 6
