@@ -17,6 +17,15 @@ library
     default-language: Haskell2010
     ghc-options:      -Wall
 
+test-suite tests
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    build-depends:    base ^>=4.15.0.0,
+                      hspec
+    hs-source-dirs:   test
+    default-language: Haskell2010
+    ghc-options:      -Wall
+
 executable dice-simulator
     main-is:          Main.hs
 
