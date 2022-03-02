@@ -10,19 +10,19 @@ die n = uniform [1 .. n]
 d :: Int -> Int -> Dist Int
 n `d` k = sum <$> replicateM n (die k)
 
-explode :: Int -> Dist Int -> Dist Int
-explode threshold r = do
+explode :: (Int -> Bool) -> Dist Int -> Dist [Int]
+explode p r = do
   x <- r
-  if x >= threshold
-    then (+ x) <$> explode threshold r
-    else return x
+  if p x
+    then (x :) <$> explode p r
+    else return [x]
 
-limitedExplode :: Int -> Int -> Dist Int -> Dist Int
-limitedExplode rerolls threshold r = do
+limitedExplode :: Int -> (Int -> Bool) -> Dist Int -> Dist [Int]
+limitedExplode rerolls p r = do
   x <- r
-  if rerolls > 0 && x >= threshold
-    then (+ x) <$> limitedExplode (rerolls - 1) threshold r
-    else return x
+  if rerolls > 0 && p x
+    then (x :) <$> limitedExplode (rerolls - 1) p r
+    else return [x]
 
 highest :: Ord a => Int -> [a] -> [a]
 highest n = take n . reverse . List.sort
