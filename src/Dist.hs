@@ -45,6 +45,7 @@ module Dist
     binomial,
     negativeBinomial,
     hypergeometric,
+    poisson,
 
     -- * Analysis
     probability,
@@ -220,6 +221,16 @@ hypergeometric n pop k =
   where
     lo = max 0 (n + k - pop)
     hi = min n k
+
+-- | Poisson distribution.  Gives the number of independent events occurring in
+-- a fixed time interval, if events are occurring at the given expected rate per
+-- time interval.
+poisson :: (Ord prob, Floating prob) => prob -> Dist prob Integer
+poisson lambda =
+  categorical
+    [ (lambda ^ k * exp (-lambda) / fromInteger (product [1 .. k]), k)
+      | k <- [0 ..]
+    ]
 
 -- | Computes the probability of an event, represented by a predicate on values.
 --
