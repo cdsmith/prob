@@ -222,16 +222,14 @@ stddev dist = sqrt (variance dist)
 -- This will often contain duplicate values, which can be removed using 'nub',
 -- 'Data.Set.fromList', etc.
 possibilities :: Dist a -> [(Probability, a)]
-possibilities = step . PQ.singleton 1
+possibilities = go . PQ.singleton 1
   where
-    step queue
+    go queue
       | PQ.null queue = []
       | otherwise = case PQ.deleteFindMax queue of
-        ((p, dist), queue') -> handle p dist queue'
-
-    handle p (Certainly x) queue = (p, x) : step queue
-    handle p (Choice q a b) queue =
-      step $ PQ.insert (p * q) a $ PQ.insert (p * (1 - q)) b queue
+        ((p, Certainly x), queue') -> (p, x) : go queue'
+        ((p, Choice q a b), queue') ->
+          go . PQ.insert (p * q) a . PQ.insert (p * (1 - q)) b $ queue'
 
 -- | Samples the probability distribution to produce a value.
 sample :: Dist a -> IO a
