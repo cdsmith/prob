@@ -98,7 +98,10 @@ simplify = categorical . fmap swap . Map.toList . probabilities
 probabilities :: (Ord prob, Num prob, Ord a) => Dist prob a -> Map a prob
 probabilities (Certainly x) = Map.singleton x 1
 probabilities (Choice p a b) =
-  fmap (* p) (probabilities a) `Map.union` fmap (* (1 - p)) (probabilities b)
+  Map.unionWith
+    (+)
+    (fmap (* p) (probabilities a))
+    (fmap (* (1 - p)) (probabilities b))
 
 -- | Gives the list of all possibile values of a given probability distribution.
 -- Possibilities are returned in decreasing order of probability.  However, the
