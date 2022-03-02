@@ -6,7 +6,6 @@ module Dice where
 
 import Control.Applicative (liftA2)
 import Control.Monad (replicateM)
-import Data.Function (on)
 import qualified Data.List as List
 import Dist
 
