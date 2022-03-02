@@ -87,12 +87,8 @@ instance Monad (Dist prob) where
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-simplify :: (Ord prob, Fractional prob, Ord a) => Dist prob a -> Dist prob a
-simplify =
-  categorical
-    . fmap swap
-    . Map.toList
-    . probabilities
+simplify :: (Fractional prob, Ord prob, Ord a) => Dist prob a -> Dist prob a
+simplify = categorical . fmap swap . Map.toList . probabilities
 
 -- | Gives a map from outcomes to their probabilities in the given distribution.
 --
@@ -100,14 +96,17 @@ simplify =
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
 probabilities :: (Ord prob, Num prob, Ord a) => Dist prob a -> Map a prob
-probabilities =
-  Map.fromListWith (+)
-    . fmap swap
-    . possibilities
+probabilities (Certainly x) = Map.singleton x 1
+probabilities (Choice p a b) =
+  fmap (* p) (probabilities a) `Map.union` fmap (* (1 - p)) (probabilities b)
 
 -- | Gives the list of all possibile values of a given probability distribution.
--- This will often contain duplicate values, which in the finite case can be
--- removed using 'simplify' on the 'Dist' first.
+-- Possibilities are returned in decreasing order of probability.  However, the
+-- list will often contain multiple entries for the same outcome, in which case
+-- the true probability for that outcome is the sum of all entries.
+--
+-- In the finite case, multiple entries can be combined by using 'simplify' on
+-- the 'Dist' first.
 possibilities :: (Ord prob, Num prob) => Dist prob b -> [(prob, b)]
 possibilities = go . PQ.singleton 1
   where
