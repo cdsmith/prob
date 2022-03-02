@@ -1,11 +1,40 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE TupleSections #-}
 
+-- | This module defines the 'Dist' monad and its operations.
+--
+-- A @'Dist' a@ is a discrete probability distribution over values of type @a@.
+--
+-- You can define distributions in several ways:
+--
+-- * Choosing from the common distributions exported by this module, such as
+--   a 'categorical', 'uniform', 'geometric', 'bernoulli', 'binomial',
+--   'negativeBinomial', or 'hypergemetric' distribution.
+-- * Operating on existing distributions using the 'Functor', 'Applicative', and
+--   'Monad' instances, or by conditioning on events using 'conditional' or
+--   'finiteConditional'.
+--
+-- Once you have a distribution, you can sample from it using 'sample', list its
+-- outcomes and their probabilities using 'probabilities' or 'possibilities',
+-- and compute various statistics using 'probability', 'approxProbability',
+-- 'expectation', 'variance', 'stddev', 'entropy', 'relativeEntropy', or
+-- 'mutualInformation'.
+--
+-- It's important to make a distinction between *finite* and *infinite*
+-- distributions.  An infinite distribution is one whose list of 'possibilities'
+-- is infinite.  Note that this *includes* distributions for which there are
+-- only finitely many distinct outcomes, but still an infinite number of paths
+-- to reach these outcomes.  Infinite distributions typically arise from
+-- recursive expressions.  Certain functions only work on finite distributions,
+-- and will hang or OOM if given an infinite distribution.
 module Dist
   ( -- * Types
     Probability,
     Dist,
     simplify,
+    probabilities,
+    possibilities,
+    sample,
     conditional,
     finiteConditional,
 
@@ -24,8 +53,9 @@ module Dist
     expectation,
     variance,
     stddev,
-    possibilities,
-    sample,
+    entropy,
+    relativeEntropy,
+    mutualInformation,
   )
 where
 
@@ -33,9 +63,11 @@ import Control.Applicative (liftA2)
 import Control.Monad (ap)
 import Data.Bifunctor (first)
 import Data.Bool (bool)
+import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.PQueue.Prio.Max as PQ
-import Data.Ratio
+import Data.Ratio ((%))
+import qualified Data.Set as Set
 import Data.Tuple (swap)
 import System.Random (randomRIO)
 
@@ -83,6 +115,36 @@ simplify =
     . Map.fromListWith (+)
     . fmap swap
     . possibilities
+
+-- | Gives a map from outcomes to their probabilities in the given distribution.
+--
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
+probabilities :: Ord a => Dist a -> Map a Probability
+probabilities =
+  Map.fromListWith (+)
+    . fmap swap
+    . possibilities
+
+-- | Gives the list of all possibile values of a given probability distribution.
+-- This will often contain duplicate values, which in the finite case can be
+-- removed using 'simplify' on the 'Dist' first.
+possibilities :: Dist a -> [(Probability, a)]
+possibilities = go . PQ.singleton 1
+  where
+    go queue
+      | PQ.null queue = []
+      | otherwise = case PQ.deleteFindMax queue of
+        ((p, Certainly x), queue') -> (p, x) : go queue'
+        ((p, Choice q a b), queue') ->
+          go . PQ.insert (p * q) a . PQ.insert (p * (1 - q)) b $ queue'
+
+-- | Samples the probability distribution to produce a value.
+sample :: Dist a -> IO a
+sample (Certainly x) = return x
+sample (Choice p a b) =
+  bool (sample b) (sample a) . (< p) . toRational =<< randomRIO (0 :: Double, 1)
 
 -- | Produces the conditional probability distribution, assuming some event.
 -- This function works for all distributions, but always produces an infinite
@@ -218,21 +280,44 @@ variance dist = expectation ((^ (2 :: Int)) . subtract mean <$> dist)
 stddev :: (Real a, Floating a) => Dist a -> a
 stddev dist = sqrt (variance dist)
 
--- | Gives the list of all possibile values of a given probability distribution.
--- This will often contain duplicate values, which can be removed using 'nub',
--- 'Data.Set.fromList', etc.
-possibilities :: Dist a -> [(Probability, a)]
-possibilities = go . PQ.singleton 1
-  where
-    go queue
-      | PQ.null queue = []
-      | otherwise = case PQ.deleteFindMax queue of
-        ((p, Certainly x), queue') -> (p, x) : go queue'
-        ((p, Choice q a b), queue') ->
-          go . PQ.insert (p * q) a . PQ.insert (p * (1 - q)) b $ queue'
+-- | Computes the entropy of a distribution in bits.
+--
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
+entropy :: (Ord a, Real b, Floating b) => Dist a -> b
+entropy dist =
+  sum
+    [ p * logBase 2 (recip p)
+      | p <- map (fromRational . fst) (possibilities (simplify dist))
+    ]
 
--- | Samples the probability distribution to produce a value.
-sample :: Dist a -> IO a
-sample (Certainly x) = return x
-sample (Choice p a b) =
-  bool (sample b) (sample a) . (< p) . toRational =<< randomRIO (0 :: Double, 1)
+-- | Computes the relative entropy, also known as Kullback-Leibler divergence,
+-- between two distributions in bits.
+relativeEntropy :: (Ord a, Eq b, Floating b) => Dist a -> Dist a -> b
+relativeEntropy a b = sum (term <$> Set.toList vals)
+  where
+    prob_a = probabilities a
+    prob_b = probabilities b
+    vals = Map.keysSet prob_a `Set.union` Map.keysSet prob_b
+    term x =
+      let p = fromRational (Map.findWithDefault 0 x prob_a)
+          q = fromRational (Map.findWithDefault 0 x prob_b)
+       in if p == 0 then 0 else p * logBase 2 (p / q)
+
+-- | Computes the mutual information between two random variables on the same
+-- distribution, in bits.  A random variable is represented as a function from the type
+-- of the underlying distribution to the type of values taken by the variable.
+mutualInformation ::
+  (Ord b, Ord c, Eq i, Floating i) => Dist a -> (a -> b) -> (a -> c) -> i
+mutualInformation dist f g =
+  sum (term <$> Map.keys f_probs <*> Map.keys g_probs)
+  where
+    joint_probs = probabilities ((\x -> (f x, g x)) <$> dist)
+    f_probs = probabilities (f <$> dist)
+    g_probs = probabilities (g <$> dist)
+    term x y =
+      let p_x = fromRational (Map.findWithDefault 0 x f_probs)
+          p_y = fromRational (Map.findWithDefault 0 y g_probs)
+          p_xy = fromRational (Map.findWithDefault 0 (x, y) joint_probs)
+       in if p_xy == 0 then 0 else p_xy * logBase 2 (p_xy / (p_x * p_y))
