@@ -7,7 +7,7 @@ module Dice where
 import Control.Applicative (liftA2)
 import Control.Monad (replicateM)
 import qualified Data.List as List
-import Dist
+import Dist (Dist, bernoulli, uniform)
 
 -- It's common to do math with dice, as in "3d6 + 5".  To allow this, we define
 -- a Num instance for distributions.  This is an orphan instance.
