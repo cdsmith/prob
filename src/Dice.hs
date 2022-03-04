@@ -1,5 +1,5 @@
-{-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- | Useful functions for probability distributions relating to dice.
 module Dice where
@@ -9,77 +9,85 @@ import Control.Monad (replicateM)
 import qualified Data.List as List
 import Dist (Dist, bernoulli, uniform)
 
--- It's common to do math with dice, as in "3d6 + 5".  To allow this, we define
--- a Num instance for distributions.  This is an orphan instance.
-instance (a ~ Int) => Num (Dist prob a) where
-  (+) = liftA2 (+)
-  (-) = liftA2 (-)
-  (*) = liftA2 (*)
-  abs = fmap abs
-  signum = fmap signum
-  fromInteger = pure . fromInteger
-  negate = fmap negate
+newtype Roll a = Roll {unRoll :: Dist Double a}
+  deriving (Functor, Applicative, Monad)
 
-coin :: Fractional prob => Dist prob Bool
-coin = bernoulli 0.5
+-- | It's common to do math with dice, as in "3d6 + 5".  To allow this, we
+-- define a Num instance for Roll.
+instance Num a => Num (Roll a) where
+  Roll a + Roll b = Roll (liftA2 (+) a b)
+  Roll a - Roll b = Roll (liftA2 (-) a b)
+  Roll a * Roll b = Roll (liftA2 (*) a b)
+  abs = Roll . fmap abs . unRoll
+  signum = Roll . fmap signum . unRoll
+  negate = Roll . fmap negate . unRoll
+  fromInteger = Roll . pure . fromInteger
 
-d :: (Ord prob, Fractional prob) => Int -> Int -> Dist prob [Int]
-n `d` m = replicateM n (uniform [1 .. m])
+instance Fractional a => Fractional (Roll a) where
+  Roll a / Roll b = Roll (liftA2 (/) a b)
+  recip = Roll . fmap recip . unRoll
+  fromRational = Roll . pure . fromRational
 
-rerollOn :: (a -> Bool) -> Dist prob a -> Dist prob a
+coin :: Roll Bool
+coin = Roll (bernoulli 0.5)
+
+d :: Int -> Int -> Roll [Int]
+n `d` m = Roll (replicateM n (uniform [1 .. m]))
+
+rerollOn :: (a -> Bool) -> Roll a -> Roll a
 rerollOn p r = do
   x <- r
   if p x
     then rerollOn p r
     else return x
 
-limitedRerollOn :: Int -> (a -> Bool) -> Dist prob a -> Dist prob a
+limitedRerollOn :: Int -> (a -> Bool) -> Roll a -> Roll a
 limitedRerollOn rerolls p r = do
   x <- r
   if rerolls > 0 && p x
     then limitedRerollOn (rerolls - 1) p r
     else return x
 
-explodeOn :: (a -> Bool) -> Dist prob a -> Dist prob [a]
+explodeOn :: (a -> Bool) -> Roll a -> Roll [a]
 explodeOn p r = do
   x <- r
   if p x
     then (x :) <$> explodeOn p r
     else return [x]
 
-limitedExplodeOn :: Int -> (a -> Bool) -> Dist prob a -> Dist prob [a]
+limitedExplodeOn :: Int -> (a -> Bool) -> Roll a -> Roll [a]
 limitedExplodeOn rerolls p r = do
   x <- r
   if rerolls > 0 && p x
     then (x :) <$> limitedExplodeOn (rerolls - 1) p r
     else return [x]
 
-highest :: Int -> Dist prob [Int] -> Dist prob [Int]
+highest :: Int -> Roll [Int] -> Roll [Int]
 highest n = fmap (take n . reverse . List.sort)
 
-lowest :: Int -> Dist prob [Int] -> Dist prob [Int]
+lowest :: Int -> Roll [Int] -> Roll [Int]
 lowest n = fmap (take n . List.sort)
 
-dropHighest :: Int -> Dist prob [Int] -> Dist prob [Int]
+dropHighest :: Int -> Roll [Int] -> Roll [Int]
 dropHighest n = fmap (drop n . reverse . List.sort)
 
-dropLowest :: Int -> Dist prob [Int] -> Dist prob [Int]
+dropLowest :: Int -> Roll [Int] -> Roll [Int]
 dropLowest n = fmap (drop n . List.sort)
 
-only :: (Int -> Bool) -> Dist prob [Int] -> Dist prob [Int]
+only :: (Int -> Bool) -> Roll [Int] -> Roll [Int]
 only p = fmap (filter p)
 
-count :: Dist prob [a] -> Dist prob Int
+count :: Roll [a] -> Roll Int
 count = fmap length
 
-total :: Dist prob [Int] -> Dist prob Int
+total :: Roll [Int] -> Roll Int
 total = fmap sum
 
-dndStat :: (Ord prob, Fractional prob) => Dist prob Int
+dndStat :: Roll Int
 dndStat = total (dropLowest 1 (4 `d` 6))
 
-advantage :: Dist prob Int -> Dist prob Int
+advantage :: Roll Int -> Roll Int
 advantage r = List.maximum <$> replicateM 2 r
 
-disadvantage :: Dist prob Int -> Dist prob Int
+disadvantage :: Roll Int -> Roll Int
 disadvantage r = List.minimum <$> replicateM 2 r
