@@ -97,12 +97,7 @@ simplify = categorical . fmap swap . Map.toList . probabilities
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
 probabilities :: (Ord prob, Num prob, Ord a) => Dist prob a -> Map a prob
-probabilities (Certainly x) = Map.singleton x 1
-probabilities (Choice p a b) =
-  Map.unionWith
-    (+)
-    (fmap (* p) (probabilities a))
-    (fmap (* (1 - p)) (probabilities b))
+probabilities = Map.fromListWith (+) . fmap swap . possibilities
 
 -- | Gives the list of all possibile values of a given probability distribution.
 -- Possibilities are returned in decreasing order of probability.  However, the
@@ -117,6 +112,7 @@ possibilities = go . PQ.singleton 1
     go queue
       | PQ.null queue = []
       | otherwise = case PQ.deleteFindMax queue of
+        ((0, _), _) -> []
         ((p, Certainly x), queue') -> (p, x) : go queue'
         ((p, Choice q a b), queue') ->
           go . PQ.insert (p * q) a . PQ.insert (p * (1 - q)) b $ queue'
