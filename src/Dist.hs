@@ -73,7 +73,7 @@ import System.Random (randomRIO)
 data Dist prob a
   = Certainly a
   | Choice prob (Dist prob a) (Dist prob a)
-  deriving (Functor, Show)
+  deriving (Functor)
 
 instance Applicative (Dist prob) where
   pure = Certainly
