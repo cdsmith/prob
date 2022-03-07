@@ -9,7 +9,7 @@
 --
 -- * Choosing from the common distributions exported by this module, such as
 --   a 'categorical', 'uniform', 'geometric', 'bernoulli', 'binomial',
---   'negativeBinomial', or 'hypergemetric' distribution.
+--   'negativeBinomial', 'hypergemetric', or 'poisson' distribution.
 -- * Operating on existing distributions using the 'Functor', 'Applicative', and
 --   'Monad' instances, or by conditioning on events using 'conditional' or
 --   'finiteConditional'.
