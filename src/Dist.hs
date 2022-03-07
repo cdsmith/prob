@@ -59,6 +59,7 @@ module Dist
   )
 where
 
+import Control.Applicative (liftA2)
 import Control.Monad (ap)
 import Data.Bifunctor (first)
 import Data.Bool (bool)
@@ -82,6 +83,20 @@ instance Applicative (Dist prob) where
 instance Monad (Dist prob) where
   Certainly x >>= f = f x
   Choice p a b >>= f = Choice p (a >>= f) (b >>= f)
+
+instance Num a => Num (Dist prob a) where
+  (+) = liftA2 (+)
+  (-) = liftA2 (-)
+  (*) = liftA2 (*)
+  abs = fmap abs
+  signum = fmap signum
+  negate = fmap negate
+  fromInteger = pure . fromInteger
+
+instance Fractional a => Fractional (Dist prob a) where
+  (/) = liftA2 (/)
+  recip = fmap recip
+  fromRational = pure . fromRational
 
 -- | Gives the list of all possibile values of a given probability distribution.
 -- Possibilities are returned in decreasing order of probability.  However, the
