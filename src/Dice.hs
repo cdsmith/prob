@@ -1,93 +1,149 @@
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -- | Useful functions for probability distributions relating to dice.
 module Dice where
 
-import Control.Applicative (liftA2)
 import Control.Monad (replicateM)
 import qualified Data.List as List
-import Dist (Dist, bernoulli, uniform)
+import Data.Tuple (swap)
+import Dist
 
-newtype Roll a = Roll {unRoll :: Dist Double a}
-  deriving (Functor, Applicative, Monad)
+coinFlip :: Fractional prob => Dist prob Bool
+coinFlip = bernoulli 0.5
 
--- | It's common to do math with dice, as in "3d6 + 5".  To allow this, we
--- define a Num instance for Roll.
-instance Num a => Num (Roll a) where
-  Roll a + Roll b = Roll (liftA2 (+) a b)
-  Roll a - Roll b = Roll (liftA2 (-) a b)
-  Roll a * Roll b = Roll (liftA2 (*) a b)
-  abs = Roll . fmap abs . unRoll
-  signum = Roll . fmap signum . unRoll
-  negate = Roll . fmap negate . unRoll
-  fromInteger = Roll . pure . fromInteger
+data Roll = Total Int | Dice [Int]
 
-instance Fractional a => Fractional (Roll a) where
-  Roll a / Roll b = Roll (liftA2 (/) a b)
-  recip = Roll . fmap recip . unRoll
-  fromRational = Roll . pure . fromRational
+total :: Roll -> Int
+total (Total n) = n
+total (Dice ds) = sum ds
 
-coin :: Roll Bool
-coin = Roll (bernoulli 0.5)
+dice :: Roll -> [Int]
+dice (Total _) = error "need individual dice for this calculation"
+dice (Dice ds) = ds
 
-d :: Int -> Int -> Roll [Int]
-n `d` m = Roll (replicateM n (uniform [1 .. m]))
+instance Eq Roll where
+  a == b = total a == total b
 
-rerollOn :: (a -> Bool) -> Roll a -> Roll a
-rerollOn p r = do
+instance Ord Roll where
+  compare a b = compare (total a) (total b)
+
+instance Show Roll where
+  show (Total n) = show n
+  show (Dice ds) =
+    show (sum ds) ++ " (" ++ List.intercalate ", " (show <$> ds) ++ ")"
+
+instance Num Roll where
+  a + b = Total (fromRoll a + fromRoll b)
+  a - b = Total (fromRoll a - fromRoll b)
+  a * b = Total (fromRoll a * fromRoll b)
+  abs = Total . abs . fromRoll
+  signum = Total . signum . fromRoll
+  negate = Total . negate . fromRoll
+  fromInteger = Total . fromInteger
+
+instance Enum Roll where
+  toEnum = Total . toEnum
+  fromEnum = fromEnum . total
+
+instance Integral Roll where
+  quotRem a b = (Total q, Total r)
+    where
+      (q, r) = quotRem (fromRoll a) (fromRoll b)
+  divMod a b = (Total q, Total r)
+    where
+      (q, r) = divMod (fromRoll a) (fromRoll b)
+  toInteger = toInteger . total
+
+instance Real Roll where
+  toRational = toRational . total
+
+instance Semigroup Roll where
+  Dice a <> Dice b = Dice (a <> b)
+  a <> b = Total (total a + total b)
+
+class FromRoll a where fromRoll :: Roll -> a
+
+instance FromRoll Roll where fromRoll = id
+
+instance FromRoll Int where fromRoll = total
+
+instance FromRoll [Int] where fromRoll = dice
+
+die :: Fractional prob => Int -> Dist prob Roll
+die n = Total <$> uniform [1 .. n]
+
+d :: (Fractional prob) => Int -> Int -> Dist prob Roll
+n `d` m = Dice <$> replicateM n (uniform [1 .. m])
+
+forgetDice :: Dist prob Roll -> Dist prob Roll
+forgetDice = fmap (Total . total)
+
+rerollIf :: FromRoll a => (a -> Bool) -> Dist prob Roll -> Dist prob Roll
+rerollIf p r = do
   x <- r
-  if p x
-    then rerollOn p r
+  if p (fromRoll x)
+    then rerollIf p r
     else return x
 
-limitedRerollOn :: Int -> (a -> Bool) -> Roll a -> Roll a
-limitedRerollOn rerolls p r = do
+limitedRerollIf ::
+  FromRoll a => Int -> (a -> Bool) -> Dist prob Roll -> Dist prob Roll
+limitedRerollIf rerolls p r = do
   x <- r
-  if rerolls > 0 && p x
-    then limitedRerollOn (rerolls - 1) p r
+  if rerolls > 0 && p (fromRoll x)
+    then limitedRerollIf (rerolls - 1) p r
     else return x
 
-explodeOn :: (a -> Bool) -> Roll a -> Roll [a]
-explodeOn p r = do
+explodeIf :: FromRoll a => (a -> Bool) -> Dist prob Roll -> Dist prob Roll
+explodeIf p r = do
   x <- r
-  if p x
-    then (x :) <$> explodeOn p r
-    else return [x]
+  if p (fromRoll x)
+    then (x <>) <$> explodeIf p r
+    else return (Dice [total x])
 
-limitedExplodeOn :: Int -> (a -> Bool) -> Roll a -> Roll [a]
-limitedExplodeOn rerolls p r = do
+limitedExplodeIf ::
+  FromRoll a => Int -> (a -> Bool) -> Dist prob Roll -> Dist prob Roll
+limitedExplodeIf rerolls p r = do
   x <- r
-  if rerolls > 0 && p x
-    then (x :) <$> limitedExplodeOn (rerolls - 1) p r
-    else return [x]
+  if rerolls > 0 && p (fromRoll x)
+    then (x <>) <$> limitedExplodeIf (rerolls - 1) p r
+    else return (Dice [total x])
 
-highest :: Int -> Roll [Int] -> Roll [Int]
-highest n = fmap (take n . reverse . List.sort)
+withDice :: ([Int] -> [Int]) -> Dist prob Roll -> Dist prob Roll
+withDice f = fmap (Dice . f . dice)
 
-lowest :: Int -> Roll [Int] -> Roll [Int]
-lowest n = fmap (take n . List.sort)
+highest :: Int -> Dist prob Roll -> Dist prob Roll
+highest n = withDice (take n . reverse . List.sort)
 
-dropHighest :: Int -> Roll [Int] -> Roll [Int]
-dropHighest n = fmap (drop n . reverse . List.sort)
+lowest :: Int -> Dist prob Roll -> Dist prob Roll
+lowest n = withDice (take n . List.sort)
 
-dropLowest :: Int -> Roll [Int] -> Roll [Int]
-dropLowest n = fmap (drop n . List.sort)
+dropHighest :: Int -> Dist prob Roll -> Dist prob Roll
+dropHighest n = withDice (drop n . reverse . List.sort)
 
-only :: (Int -> Bool) -> Roll [Int] -> Roll [Int]
-only p = fmap (filter p)
+dropLowest :: Int -> Dist prob Roll -> Dist prob Roll
+dropLowest n = withDice (drop n . List.sort)
 
-count :: Roll [a] -> Roll Int
-count = fmap length
+only :: (Int -> Bool) -> Dist prob Roll -> Dist prob Roll
+only p = withDice (filter p)
 
-total :: Roll [Int] -> Roll Int
-total = fmap sum
+count :: Dist prob Roll -> Dist prob Roll
+count = fmap (Total . length . dice)
 
-dndStat :: Roll Int
-dndStat = total (dropLowest 1 (4 `d` 6))
+dndStat :: Fractional prob => Dist prob Roll
+dndStat = dropLowest 1 (4 `d` 6)
 
-advantage :: Roll Int -> Roll Int
+advantage :: Dist prob Roll -> Dist prob Roll
 advantage r = List.maximum <$> replicateM 2 r
 
-disadvantage :: Roll Int -> Roll Int
+disadvantage :: Dist prob Roll -> Dist prob Roll
 disadvantage r = List.minimum <$> replicateM 2 r
+
+graph :: (Show prob, RealFrac prob) => Dist prob Roll -> String
+graph roll = unlines (map showLine (List.sort $ fmap swap $ possibilities $ simplify (total <$> roll)))
+  where
+    showLine (r, p) =
+      let n = round (70 * p)
+       in replicate n '*' ++ replicate (70 - n) ' ' ++ ": "
+            ++ (show r ++ " (" ++ show (100 * p) ++ "%)")
