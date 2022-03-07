@@ -139,11 +139,13 @@ sample (Choice p a b) =
 -- This function works for all distributions, but always produces an infinite
 -- distribution for non-trivial events.
 conditional :: (a -> Bool) -> Dist prob a -> Dist prob a
-conditional event dist = do
-  x <- dist
-  if event x
-    then return x
-    else conditional event dist
+conditional event dist = cdist
+  where
+    cdist = do
+      x <- dist
+      if event x
+        then return x
+        else cdist
 
 -- | Produces the conditional probability distribution, assuming some event.
 --
