@@ -98,7 +98,7 @@ instance Fractional a => Fractional (Dist prob a) where
   recip = fmap recip
   fromRational = pure . fromRational
 
--- | Gives the list of all possibile values of a given probability distribution.
+-- | Gives the list of all possible values of a given probability distribution.
 -- Possibilities are returned in decreasing order of probability.  However, the
 -- list will often contain multiple entries for the same outcome, in which case
 -- the true probability for that outcome is the sum of all entries.
