@@ -50,6 +50,7 @@ module Dist
 
     -- * Analysis
     probability,
+    probabilityBounds,
     approxProbability,
     expectation,
     variance,
@@ -258,16 +259,26 @@ probability event (Certainly x) = if event x then 1 else 0
 probability event (Choice p a b) =
   p * probability event a + (1 - p) * probability event b
 
--- | Like probability, but produces a lazy list of ever-improving ranges of
--- probabilities.  This can be used on infinite distributions, for which the
+-- | Like probability, but produces a lazy list of ever-improving bounds on the
+-- probability.  This can be used on infinite distributions, for which the
 -- exact probability cannot be calculated.
-approxProbability :: Num prob => (a -> Bool) -> Dist prob a -> [(prob, prob)]
-approxProbability event = go 0 1 . possibilities
+probabilityBounds :: Num prob => (a -> Bool) -> Dist prob a -> [(prob, prob)]
+probabilityBounds event = go 0 1 . possibilities
   where
     go p _ [] = [(p, p)]
     go p q ((q', x) : xs)
       | event x = (p, p + q) : go (p + q') (q - q') xs
       | otherwise = (p, p + q) : go p (q - q') xs
+
+-- | Like probability, but produces a value that differs from the true
+-- probability by at most epsilon. This can be used on infinite distributions,
+-- for which the exact probability cannot be calculated.
+approxProbability ::
+  (Ord prob, Num prob) => prob -> (a -> Bool) -> Dist prob a -> prob
+approxProbability epsilon event =
+  fst . head
+    . dropWhile ((> epsilon) . abs . uncurry (-))
+    . probabilityBounds event
 
 -- | Computes the expected value of a finite distribution.
 --
