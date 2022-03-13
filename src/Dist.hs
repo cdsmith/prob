@@ -31,6 +31,7 @@ module Dist
   ( -- * Types
     Dist,
     possibilities,
+    truncateDist,
     probabilities,
     simplify,
     sample,
@@ -112,6 +113,17 @@ possibilities dist = go (Seq.singleton (1, dist))
     go ((p, Certainly x) Seq.:<| queue') = (p, x) : go queue'
     go ((p, Choice q a b) Seq.:<| queue') =
       go (queue' Seq.:|> (p * q, a) Seq.:|> (p * (1 - q), b))
+
+-- | Truncates an infinite distribution to make it finite.  The epsilon
+-- parameter is the amount of tail probability that you're willing to ignore
+-- and assign to an arbitrary outcome.
+truncateDist :: (Fractional prob, Ord prob) => prob -> Dist prob a -> Dist prob a
+truncateDist epsilon = categorical . go 1 . possibilities
+  where
+    go q ((p, x) : poss)
+      | q - p < epsilon = [(q, x)]
+      | otherwise = (p, x) : go (q - p) poss
+    go _ [] = []
 
 -- | Gives a map from outcomes to their probabilities in the given distribution.
 --
