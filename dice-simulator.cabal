@@ -6,8 +6,7 @@ author:             Chris Smith and Shae Erisson
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  Dice,
-                      Dist
+    exposed-modules:  Dist
 
     build-depends:    base ^>=4.15.0.0,
                       containers,
