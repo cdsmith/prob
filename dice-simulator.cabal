@@ -24,12 +24,3 @@ test-suite tests
     hs-source-dirs:   test
     default-language: Haskell2010
     ghc-options:      -Wall
-
-executable dice-simulator
-    main-is:          Main.hs
-
-    build-depends:    base ^>=4.15.0.0,
-                      dice-simulator
-    hs-source-dirs:   app
-    default-language: Haskell2010
-    ghc-options:      -Wall
