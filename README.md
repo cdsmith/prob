@@ -55,3 +55,8 @@ ghci> possibilities $ simplify (truncateDist 0.00001 d)
 (0.19999571330589844,5),(0.20000514006376077,6)]
 ghci> 
 ```
+
+Internally, a value of type `Dist prob a` is represented not as a list of
+possibilities but as a binary decision tree.  This is a rich enough structure to
+allow productive enumeration of all possibilities using a breadth-first
+traversal, even if the process described is infinite and left recursive.
