@@ -65,6 +65,8 @@ import Control.Applicative (liftA2)
 import Control.Monad (ap)
 import Data.Bifunctor (first)
 import Data.Bool (bool)
+import Data.List.NonEmpty (NonEmpty (..))
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
@@ -107,8 +109,8 @@ instance Fractional a => Fractional (Dist prob a) where
 --
 -- In the finite case, multiple entries can be combined by using 'simplify' on
 -- the 'Dist' first.
-possibilities :: Num prob => Dist prob a -> [(prob, a)]
-possibilities dist = go (Seq.singleton (1, dist))
+possibilities :: Num prob => Dist prob a -> NonEmpty (prob, a)
+possibilities dist = NonEmpty.fromList (go (Seq.singleton (1, dist)))
   where
     go Seq.Empty = []
     go ((p, Certainly x) Seq.:<| queue') = (p, x) : go queue'
@@ -118,13 +120,14 @@ possibilities dist = go (Seq.singleton (1, dist))
 -- | Truncates an infinite distribution to make it finite.  The epsilon
 -- parameter is the amount of tail probability that you're willing to ignore
 -- and assign to an arbitrary outcome.
-truncateDist :: (Fractional prob, Ord prob) => prob -> Dist prob a -> Dist prob a
+truncateDist ::
+  (Fractional prob, Ord prob) => prob -> Dist prob a -> Dist prob a
 truncateDist epsilon = categorical . go 1 . possibilities
   where
-    go q ((p, x) : poss)
-      | q - p < epsilon = [(q, x)]
-      | otherwise = (p, x) : go (q - p) poss
-    go _ [] = []
+    go q ((_, x) :| []) = NonEmpty.singleton (q, x)
+    go q ((p, x) :| (y : ys))
+      | q - p < epsilon = NonEmpty.singleton (q, x)
+      | otherwise = (p, x) :| NonEmpty.toList (go (q - p) (y :| ys))
 
 -- | Gives a map from outcomes to their probabilities in the given distribution.
 --
@@ -132,7 +135,8 @@ truncateDist epsilon = categorical . go 1 . possibilities
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
 probabilities :: (Num prob, Ord a) => Dist prob a -> Map a prob
-probabilities = Map.fromListWith (+) . fmap swap . possibilities
+probabilities =
+  Map.fromListWith (+) . NonEmpty.toList . fmap swap . possibilities
 
 -- | Simplifies a finite distribution.
 --
@@ -140,7 +144,8 @@ probabilities = Map.fromListWith (+) . fmap swap . possibilities
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
 simplify :: (Fractional prob, Ord a) => Dist prob a -> Dist prob a
-simplify = categorical . fmap swap . Map.toList . probabilities
+simplify =
+  categorical . fmap swap . NonEmpty.fromList . Map.toList . probabilities
 
 -- | Samples the probability distribution to produce a value.
 sample :: (Real prob) => Dist prob a -> IO a
@@ -167,22 +172,24 @@ conditional event dist = cdist
 -- reach those outcomes) will hang.
 finiteConditional ::
   Fractional prob => (a -> Bool) -> Dist prob a -> Dist prob a
-finiteConditional event dist = categorical (map (first (/ p_event)) filtered)
+finiteConditional event dist
+  | null filtered = error "Cannot condition on event with probability zero."
+  | otherwise = categorical (first (/ p_event) <$> NonEmpty.fromList filtered)
   where
-    filtered = filter (event . snd) (possibilities dist)
+    filtered = NonEmpty.filter (event . snd) (possibilities dist)
     p_event = sum (map fst filtered)
 
 -- | A distribution with a fixed probability for each outcome.  The
 -- probabilities should add to 1, but this is not checked.
-categorical :: Fractional prob => [(prob, a)] -> Dist prob a
+categorical :: Fractional prob => NonEmpty (prob, a) -> Dist prob a
 categorical = go 1
   where
-    go _ [] = error "Empty distribution is not allowed"
-    go _ [(_, x)] = Certainly x
-    go p ((q, x) : xs) = Choice (q / p) (Certainly x) (go (p - q) xs)
+    go _ ((_, x) :| []) = Certainly x
+    go p ((q, x) :| (y : ys)) =
+      Choice (q / p) (Certainly x) (go (p - q) (y :| ys))
 
 -- | A uniform distribution over a list of values.
-uniform :: Fractional prob => [a] -> Dist prob a
+uniform :: Fractional prob => NonEmpty a -> Dist prob a
 uniform xs = categorical $ (recip n,) <$> xs where n = realToFrac (length xs)
 
 -- | Geometric distribution over a list of possibilities.
@@ -206,18 +213,20 @@ n `choose` k
 -- | A binomial distribution.  This gives the distribution of number of
 -- successes in @n@ trials with probability @p@ of success.
 binomial :: Fractional prob => Integer -> prob -> Dist prob Integer
-binomial n p =
-  categorical
-    [ (fromInteger (n `choose` k) * p ^ k * (1 - p) ^ (n - k), k)
-      | k <- [0 .. n]
-    ]
+binomial n p
+  | n < 1 = error "binomial n p: n must be positive"
+  | otherwise =
+    categorical . NonEmpty.fromList $
+      [ (fromInteger (n `choose` k) * p ^ k * (1 - p) ^ (n - k), k)
+        | k <- [0 .. n]
+      ]
 
 -- | Negative binomial distribution.  This gives the distribution of number of
 -- failures before @r@ successes with probability @p@ of success.
 negativeBinomial :: Fractional prob => Integer -> prob -> Dist prob Integer
 negativeBinomial 0 _ = pure 0
 negativeBinomial r p =
-  categorical
+  categorical . NonEmpty.fromList $
     [ (fromInteger ((k + r - 1) `choose` (r - 1)) * p ^ r * (1 - p) ^ k, k)
       | k <- [0 ..]
     ]
@@ -227,14 +236,16 @@ negativeBinomial r p =
 -- possibilities are successful.
 hypergeometric ::
   Fractional prob => Integer -> Integer -> Integer -> Dist prob Integer
-hypergeometric n pop k =
-  categorical
-    [ ( fromInteger ((k `choose` m) * ((pop - k) `choose` (n - m)))
-          / fromInteger (pop `choose` n),
-        m
-      )
-      | m <- [lo .. hi]
-    ]
+hypergeometric n pop k
+  | lo <= hi = error "hypergeometric n pop k: n and k may not be greater than the population"
+  | otherwise =
+    categorical . NonEmpty.fromList $
+      [ ( fromInteger ((k `choose` m) * ((pop - k) `choose` (n - m)))
+            / fromInteger (pop `choose` n),
+          m
+        )
+        | m <- [lo .. hi]
+      ]
   where
     lo = max 0 (n + k - pop)
     hi = min n k
@@ -244,7 +255,7 @@ hypergeometric n pop k =
 -- time interval.
 poisson :: Floating prob => prob -> Dist prob Integer
 poisson lambda =
-  categorical
+  categorical . NonEmpty.fromList $
     [ (lambda ^ k * exp (-lambda) / fromInteger (product [1 .. k]), k)
       | k <- [0 ..]
     ]
@@ -262,13 +273,14 @@ probability event (Choice p a b) =
 -- | Like probability, but produces a lazy list of ever-improving bounds on the
 -- probability.  This can be used on infinite distributions, for which the
 -- exact probability cannot be calculated.
-probabilityBounds :: Num prob => (a -> Bool) -> Dist prob a -> [(prob, prob)]
-probabilityBounds event = go 0 1 . possibilities
+probabilityBounds ::
+  Num prob => (a -> Bool) -> Dist prob a -> NonEmpty (prob, prob)
+probabilityBounds event = go 0 1 . NonEmpty.toList . possibilities
   where
-    go p _ [] = [(p, p)]
+    go p _ [] = (p, p) :| []
     go p q ((q', x) : xs)
-      | event x = (p, p + q) : go (p + q') (q - q') xs
-      | otherwise = (p, p + q) : go p (q - q') xs
+      | event x = (p, p + q) :| NonEmpty.toList (go (p + q') (q - q') xs)
+      | otherwise = (p, p + q) :| NonEmpty.toList (go p (q - q') xs)
 
 -- | Like probability, but produces a value that differs from the true
 -- probability by at most epsilon. This can be used on infinite distributions,
@@ -277,7 +289,7 @@ approxProbability ::
   (Ord prob, Num prob) => prob -> (a -> Bool) -> Dist prob a -> prob
 approxProbability epsilon event =
   fst . head
-    . dropWhile ((> epsilon) . abs . uncurry (-))
+    . NonEmpty.dropWhile ((> epsilon) . abs . uncurry (-))
     . probabilityBounds event
 
 -- | Computes the expected value of a finite distribution.
@@ -314,11 +326,9 @@ stddev dist = sqrt (variance dist)
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
 entropy :: (Floating prob, Ord a) => Dist prob a -> prob
-entropy dist =
-  sum
-    [ -p * logBase 2 p
-      | p <- map fst (possibilities (simplify dist))
-    ]
+entropy dist = sum (entropyTerm . fst <$> possibilities (simplify dist))
+  where
+    entropyTerm p = -p * logBase 2 p
 
 -- | Computes the relative entropy, also known as Kullback-Leibler divergence,
 -- between two distributions in bits.
