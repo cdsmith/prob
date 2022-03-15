@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               dice-simulator
+name:               prob
 version:            0.1.0.0
 
 author:             Chris Smith and Shae Erisson
