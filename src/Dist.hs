@@ -198,39 +198,38 @@ bernoulli p = Choice p (Certainly True) (Certainly False)
 
 -- | Computes nCk.  This is a building block for several well-known discrete
 -- distributions.
-choose :: Integer -> Integer -> Integer
+choose :: Integral t => t -> t -> t
 n `choose` k
   | k > n `div` 2 = n `choose` (n - k)
   | otherwise = product [n - k + 1 .. n] `div` product [1 .. k]
 
 -- | A binomial distribution.  This gives the distribution of number of
 -- successes in @n@ trials with probability @p@ of success.
-binomial :: Fractional prob => Integer -> prob -> Dist prob Integer
+binomial :: (Fractional prob, Integral n) => n -> prob -> Dist prob n
 binomial n p =
   categorical
-    [ (fromInteger (n `choose` k) * p ^ k * (1 - p) ^ (n - k), k)
+    [ (fromIntegral (n `choose` k) * p ^ k * (1 - p) ^ (n - k), k)
       | k <- [0 .. n]
     ]
 
 -- | Negative binomial distribution.  This gives the distribution of number of
 -- failures before @r@ successes with probability @p@ of success.
-negativeBinomial :: Fractional prob => Integer -> prob -> Dist prob Integer
+negativeBinomial :: (Fractional prob, Integral n) => n -> prob -> Dist prob n
 negativeBinomial 0 _ = pure 0
 negativeBinomial r p =
   categorical
-    [ (fromInteger ((k + r - 1) `choose` (r - 1)) * p ^ r * (1 - p) ^ k, k)
+    [ (fromIntegral ((k + r - 1) `choose` (r - 1)) * p ^ r * (1 - p) ^ k, k)
       | k <- [0 ..]
     ]
 
 -- | Hypergeometric distribution.  This gives the distribution of number of
 -- successful draws out of @n@ attempts without replacement, when @k@
 -- possibilities are successful.
-hypergeometric ::
-  Fractional prob => Integer -> Integer -> Integer -> Dist prob Integer
+hypergeometric :: (Fractional prob, Integral n) => n -> n -> n -> Dist prob n
 hypergeometric n pop k =
   categorical
-    [ ( fromInteger ((k `choose` m) * ((pop - k) `choose` (n - m)))
-          / fromInteger (pop `choose` n),
+    [ ( fromIntegral ((k `choose` m) * ((pop - k) `choose` (n - m)))
+          / fromIntegral (pop `choose` n),
         m
       )
       | m <- [lo .. hi]
@@ -242,10 +241,10 @@ hypergeometric n pop k =
 -- | Poisson distribution.  Gives the number of independent events occurring in
 -- a fixed time interval, if events are occurring at the given expected rate per
 -- time interval.
-poisson :: Floating prob => prob -> Dist prob Integer
+poisson :: (Floating prob, Integral n) => prob -> Dist prob n
 poisson lambda =
   categorical
-    [ (lambda ^ k * exp (-lambda) / fromInteger (product [1 .. k]), k)
+    [ (lambda ^ k * exp (-lambda) / fromIntegral (product [1 .. k]), k)
       | k <- [0 ..]
     ]
 
