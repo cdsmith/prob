@@ -63,7 +63,7 @@ where
 
 import Control.Applicative (liftA2)
 import Control.Monad (ap)
-import Data.Bifunctor (first)
+import Data.Bifunctor (Bifunctor(..))
 import Data.Bool (bool)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -77,6 +77,10 @@ data Dist prob a
   = Certainly a
   | Choice prob (Dist prob a) (Dist prob a)
   deriving (Functor)
+
+instance Bifunctor Dist where
+  bimap _ g (Certainly a) = Certainly (g a)
+  bimap f g (Choice p a b) = Choice (f p) (bimap f g a) (bimap f g b)
 
 instance Applicative (Dist prob) where
   pure = Certainly
@@ -321,6 +325,10 @@ entropy dist =
 
 -- | Computes the relative entropy, also known as Kullback-Leibler divergence,
 -- between two distributions in bits.
+--
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
 relativeEntropy ::
   (Eq prob, Floating prob, Ord a) => Dist prob a -> Dist prob a -> prob
 relativeEntropy a b = sum (term <$> Set.toList vals)
@@ -334,8 +342,13 @@ relativeEntropy a b = sum (term <$> Set.toList vals)
        in if p == 0 then 0 else p * logBase 2 (p / q)
 
 -- | Computes the mutual information between two random variables on the same
--- distribution, in bits.  A random variable is represented as a function from the type
--- of the underlying distribution to the type of values taken by the variable.
+-- distribution, in bits.  A random variable is represented as a function from
+-- the type of the underlying distribution to the type of values taken by the
+-- variable.
+--
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
 mutualInformation ::
   (Eq prob, Floating prob, Ord b, Ord c) =>
   Dist prob a ->
