@@ -97,9 +97,10 @@ main = hspec $ do
 
   describe "info theory" $ do
     it "example" $ do
-      -- The fundamental unit of information theory is the bit.  The *entropy*
-      -- of a probability distribution tells you how many bits of information
-      -- you would learn by knowing the value.
+      -- Our fundamental unit of information theory will be the bit, and the
+      -- *entropy* of a probability distribution tells us how many bits of
+      -- information you would learn by knowing a value chosen from that
+      -- distribution.
       --
       -- A choice between two options can be represented with one bit.
       entropy (uniform [0, 1] :: Dist Double Int) `shouldApprox` 1
@@ -180,12 +181,21 @@ main = hspec $ do
       -- is what number came up on that die, and 100% of that info is relevant
       -- to the sum.  That's log_2 6 bits of information, or about 2.58.
       entropy (sum <$> d_1) `shouldApprox` logBase 2 6
+      entropy (sum <$> d_1) `shouldApprox` 2.5849625007211565
 
       -- On the other hand, suppose we learn that there were 2, 3, or 4 d6 dice
       -- rolled. Then these results come out different, because knowing that
       -- more dice were rolled leaves a lot more room for uncertainty about the
       -- sum!  So knowing the length tells you less about the sum, and there is
       -- more entropy remaining in the conditional distribution of sums.
+      --
+      -- Interestingly, it is actually the two and three-roll cases that tell
+      -- you the least about the sum.  They are near the middle, so their sums
+      -- overlap the most with possible sums from other lengths, and knowing the
+      -- number of rolls does less to narrow down the possibilities.  On the
+      -- other hand, the remaining entropy is still higher with the four-roll
+      -- case: although knowing that there are four rolls gives you more
+      -- information, there's even more information to know!
       let d_2 = finiteConditional ((== 2) . length) d
       relativeEntropy d_2 d `shouldApprox` 2
       relativeEntropy (sum <$> d_2) (sum <$> d)
