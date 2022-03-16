@@ -273,9 +273,9 @@ probabilityBounds event = go 0 1 . possibilities
 -- probability by at most epsilon. This can be used on infinite distributions,
 -- for which the exact probability cannot be calculated.
 approxProbability ::
-  (Ord prob, Num prob) => prob -> (a -> Bool) -> Dist prob a -> prob
+  (Ord prob, Fractional prob) => prob -> (a -> Bool) -> Dist prob a -> prob
 approxProbability epsilon event =
-  fst . head
+  (/ 2) . uncurry (+) . head
     . dropWhile ((> epsilon) . abs . uncurry (-))
     . probabilityBounds event
 
