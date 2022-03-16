@@ -341,10 +341,10 @@ relativeEntropy a b = sum (term <$> Set.toList vals)
           q = Map.findWithDefault 0 x prob_b
        in if p == 0 then 0 else p * logBase 2 (p / q)
 
--- | Computes the mutual information between two random variables on the same
--- distribution, in bits.  A random variable is represented as a function from
--- the type of the underlying distribution to the type of values taken by the
--- variable.
+-- | Computes the mutual information between two random variables, in bits.  The
+-- given distribution is taken as a definition of a probability space, and the
+-- random variables are represented as functions from the sample space to values
+-- taken by the random variable.
 --
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
