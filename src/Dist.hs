@@ -245,11 +245,13 @@ hypergeometric pop k n =
 -- | Poisson distribution.  Gives the number of independent events occurring in
 -- a fixed time interval, if events are occurring at the given expected rate per
 -- time interval.
-poisson :: (Floating prob, Integral n) => prob -> Dist prob n
+poisson :: (Floating prob, Num n) => prob -> Dist prob n
 poisson lambda =
   categorical
-    [ (lambda ^ k * exp (-lambda) / fromIntegral (product [1 .. k]), k)
-      | k <- [0 ..]
+    [ ( lambda ^ k * exp (-lambda) / fromIntegral (product [1 .. k]),
+        fromIntegral k
+      )
+      | k <- [0 :: Integer ..]
     ]
 
 -- | Computes the probability of an event, represented by a predicate on values.
