@@ -63,7 +63,7 @@ where
 
 import Control.Applicative (liftA2)
 import Control.Monad (ap)
-import Data.Bifunctor (Bifunctor(..))
+import Data.Bifunctor (Bifunctor (..))
 import Data.Bool (bool)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -209,8 +209,8 @@ n `choose` k
 
 -- | A binomial distribution.  This gives the distribution of number of
 -- successes in @n@ trials with probability @p@ of success.
-binomial :: (Fractional prob, Integral n) => n -> prob -> Dist prob n
-binomial n p =
+binomial :: (Fractional prob, Integral n) => prob -> n -> Dist prob n
+binomial p n =
   categorical
     [ (fromIntegral (n `choose` k) * p ^ k * (1 - p) ^ (n - k), k)
       | k <- [0 .. n]
@@ -218,9 +218,9 @@ binomial n p =
 
 -- | Negative binomial distribution.  This gives the distribution of number of
 -- failures before @r@ successes with probability @p@ of success.
-negativeBinomial :: (Fractional prob, Integral n) => n -> prob -> Dist prob n
-negativeBinomial 0 _ = pure 0
-negativeBinomial r p =
+negativeBinomial :: (Fractional prob, Integral n) => prob -> n -> Dist prob n
+negativeBinomial _ 0 = pure 0
+negativeBinomial p r =
   categorical
     [ (fromIntegral ((k + r - 1) `choose` (r - 1)) * p ^ r * (1 - p) ^ k, k)
       | k <- [0 ..]
@@ -230,7 +230,7 @@ negativeBinomial r p =
 -- successful draws out of @n@ attempts without replacement, when @k@
 -- possibilities are successful.
 hypergeometric :: (Fractional prob, Integral n) => n -> n -> n -> Dist prob n
-hypergeometric n pop k =
+hypergeometric pop k n =
   categorical
     [ ( fromIntegral ((k `choose` m) * ((pop - k) `choose` (n - m)))
           / fromIntegral (pop `choose` n),
@@ -257,16 +257,16 @@ poisson lambda =
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-probability :: Num prob => (a -> Bool) -> Dist prob a -> prob
-probability event (Certainly x) = if event x then 1 else 0
-probability event (Choice p a b) =
-  p * probability event a + (1 - p) * probability event b
+probability :: Num prob => Dist prob a -> (a -> Bool) -> prob
+probability (Certainly x) event = if event x then 1 else 0
+probability (Choice p a b) event =
+  p * probability a event + (1 - p) * probability b event
 
 -- | Like probability, but produces a lazy list of ever-improving bounds on the
 -- probability.  This can be used on infinite distributions, for which the
 -- exact probability cannot be calculated.
-probabilityBounds :: Num prob => (a -> Bool) -> Dist prob a -> [(prob, prob)]
-probabilityBounds event = go 0 1 . possibilities
+probabilityBounds :: Num prob => Dist prob a -> (a -> Bool) -> [(prob, prob)]
+probabilityBounds dist event = go 0 1 (possibilities dist)
   where
     go p _ [] = [(p, p)]
     go p q ((q', x) : xs)
@@ -277,11 +277,10 @@ probabilityBounds event = go 0 1 . possibilities
 -- probability by at most epsilon. This can be used on infinite distributions,
 -- for which the exact probability cannot be calculated.
 approxProbability ::
-  (Ord prob, Fractional prob) => prob -> (a -> Bool) -> Dist prob a -> prob
-approxProbability epsilon event =
-  (/ 2) . uncurry (+) . head
-    . dropWhile ((> epsilon) . abs . uncurry (-))
-    . probabilityBounds event
+  (Ord prob, Fractional prob) => prob -> Dist prob a -> (a -> Bool) -> prob
+approxProbability epsilon dist event =
+  (/ 2) . uncurry (+) . head . dropWhile ((> epsilon) . abs . uncurry (-)) $
+    probabilityBounds dist event
 
 -- | Computes the expected value of a finite distribution.
 --

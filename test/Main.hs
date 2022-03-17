@@ -26,61 +26,61 @@ main = hspec $ do
     describe "categorical" $ do
       it "assigns the right probabilities" $ do
         let d = categorical [(1 / 2, 1), (1 / 3, 2), (1 / 6, 3)] :: ExactDist Int
-        probability (== 1) d `shouldBe` 1 / 2
-        probability (== 2) d `shouldBe` 1 / 3
-        probability (== 3) d `shouldBe` 1 / 6
+        probability d (== 1) `shouldBe` 1 / 2
+        probability d (== 2) `shouldBe` 1 / 3
+        probability d (== 3) `shouldBe` 1 / 6
 
     describe "uniform" $ do
       it "assigns the right probabilities" $ do
         let d = uniform [1, 2, 3] :: ExactDist Int
-        probability (== 1) d `shouldBe` 1 / 3
-        probability (== 2) d `shouldBe` 1 / 3
-        probability (== 3) d `shouldBe` 1 / 3
+        probability d (== 1) `shouldBe` 1 / 3
+        probability d (== 2) `shouldBe` 1 / 3
+        probability d (== 3) `shouldBe` 1 / 3
 
     describe "geometric" $ do
       it "assigns the right probabilities" $ do
         let d = geometric (1 / 3) [1 .. 10] :: ExactDist Int
-        probability (== 1) d `shouldBe` 1 / 3
-        probability (== 2) d `shouldBe` 2 / 9
-        probability (== 3) d `shouldBe` 4 / 27
+        probability d (== 1) `shouldBe` 1 / 3
+        probability d (== 2) `shouldBe` 2 / 9
+        probability d (== 3) `shouldBe` 4 / 27
 
     describe "bernoulli" $ do
       it "assigns the right probabilities" $ do
         let d = bernoulli (1 / 3) :: ExactDist Bool
-        probability (== True) d `shouldBe` 1 / 3
-        probability (== False) d `shouldBe` 2 / 3
+        probability d (== True) `shouldBe` 1 / 3
+        probability d (== False) `shouldBe` 2 / 3
 
     describe "binomial" $ do
       it "assigns the right probabilities" $ do
-        let d = binomial 3 (1 / 3) :: ExactDist Int
-        probability (== 0) d `shouldBe` 08 / 27
-        probability (== 1) d `shouldBe` 12 / 27
-        probability (== 2) d `shouldBe` 06 / 27
-        probability (== 3) d `shouldBe` 01 / 27
+        let d = binomial (1 / 3) 3 :: ExactDist Int
+        probability d (== 0) `shouldBe` 08 / 27
+        probability d (== 1) `shouldBe` 12 / 27
+        probability d (== 2) `shouldBe` 06 / 27
+        probability d (== 3) `shouldBe` 01 / 27
 
     describe "negativeBinomial" $ do
       it "assigns the right probabilities" $ do
-        let d = negativeBinomial 3 (1 / 3) :: ExactDist Int
-        approxProbability epsilon (== 0) d `shouldApprox` (1 / 27)
-        approxProbability epsilon (== 1) d `shouldApprox` (2 / 27)
-        approxProbability epsilon (== 2) d `shouldApprox` (8 / 81)
-        approxProbability epsilon (== 3) d `shouldApprox` (80 / 729)
+        let d = negativeBinomial (1 / 3) 3 :: ExactDist Int
+        approxProbability epsilon d (== 0) `shouldApprox` (1 / 27)
+        approxProbability epsilon d (== 1) `shouldApprox` (2 / 27)
+        approxProbability epsilon d (== 2) `shouldApprox` (8 / 81)
+        approxProbability epsilon d (== 3) `shouldApprox` (80 / 729)
 
     describe "hypergeometric" $ do
       it "assigns the right probabilities" $ do
-        let d = hypergeometric 3 10 5 :: ExactDist Int
-        probability (== 0) d `shouldBe` 6 / 72
-        probability (== 1) d `shouldBe` 30 / 72
-        probability (== 2) d `shouldBe` 30 / 72
-        probability (== 3) d `shouldBe` 6 / 72
+        let d = hypergeometric 10 5 3 :: ExactDist Int
+        probability d (== 0) `shouldBe` 6 / 72
+        probability d (== 1) `shouldBe` 30 / 72
+        probability d (== 2) `shouldBe` 30 / 72
+        probability d (== 3) `shouldBe` 6 / 72
 
     describe "poisson" $ do
       it "assigns the right probabilities" $ do
         let d = poisson 3 :: Dist Double Int
-        approxProbability epsilon (== 0) d `shouldApprox` (1 / exp 3)
-        approxProbability epsilon (== 1) d `shouldApprox` (3 / exp 3)
-        approxProbability epsilon (== 2) d `shouldApprox` (4.5 / exp 3)
-        approxProbability epsilon (== 3) d `shouldApprox` (4.5 / exp 3)
+        approxProbability epsilon d (== 0) `shouldApprox` (1 / exp 3)
+        approxProbability epsilon d (== 1) `shouldApprox` (3 / exp 3)
+        approxProbability epsilon d (== 2) `shouldApprox` (4.5 / exp 3)
+        approxProbability epsilon d (== 3) `shouldApprox` (4.5 / exp 3)
 
   describe "Dist" $ do
     it "can describe a stochastic process" $ do
