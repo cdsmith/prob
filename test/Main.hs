@@ -12,10 +12,10 @@ import Test.Hspec
 type ExactDist a = Dist Rational a
 
 epsilon :: Fractional a => a
-epsilon = 1e-10
+epsilon = 1e-7
 
 approxEq :: (Ord a, Fractional a) => a -> a -> Bool
-approxEq x y = abs (x - y) < epsilon
+approxEq x y = abs (x - y) < 1e-5
 
 shouldApprox :: (Show a, Ord a, Fractional a) => a -> a -> Expectation
 x `shouldApprox` y = x `shouldSatisfy` approxEq y
@@ -84,7 +84,7 @@ main = hspec $ do
 
   describe "Dist" $ do
     it "can describe a stochastic process" $ do
-      let d :: ExactDist [Int] = simplify $ do
+      let d :: ExactDist [Int] = do
             -- Roll d4, then roll that number of d6 and add the d6's together.
             n <- uniform [1 .. 4]
             replicateM n (uniform [1 .. 6])
@@ -94,6 +94,33 @@ main = hspec $ do
         length xs `shouldSatisfy` (<= 4)
         xs `shouldSatisfy` all (>= 1)
         xs `shouldSatisfy` all (<= 6)
+
+    it "can describe an unbounded stochastic process" $ do
+      -- Reroll all 1s.  This is a left-recursive infinite process, and naive
+      -- implementations tend to hang when trying to analyze it.
+      let d :: ExactDist Int = do
+            n <- uniform [1 .. 6]
+            if n == 1 then d else return n
+
+      approxProbability epsilon d (== 1) `shouldApprox` 0
+      approxProbability epsilon d (== 2) `shouldApprox` 0.2
+      approxProbability epsilon d (== 3) `shouldApprox` 0.2
+      approxProbability epsilon d (== 4) `shouldApprox` 0.2
+      approxProbability epsilon d (== 5) `shouldApprox` 0.2
+      approxProbability epsilon d (== 6) `shouldApprox` 0.2
+
+  describe "stats" $ do
+    it "computes the expected value of a distribution" $ do
+      expectation (uniform [1 .. 5] :: ExactDist Rational) `shouldBe` 3
+
+      let d = truncateDist epsilon (geometric 0.5 [1 ..]) :: Dist Double Double
+      expectation d `shouldApprox` 2
+
+    it "computes the variance of a distribution" $ do
+      let d = truncateDist epsilon (poisson 4) :: Dist Double Double
+      expectation d `shouldApprox` 4
+      variance d `shouldApprox` 4
+      stddev d `shouldApprox` 2
 
   describe "info theory" $ do
     it "example" $ do
@@ -119,7 +146,7 @@ main = hspec $ do
       -- We can explore more about information theory with a more advanced
       -- example.  We'll use the stochastic process from earlier, where we roll
       -- a d4, then roll that number of d6.
-      let d :: Dist Double [Int] = simplify $ do
+      let d :: Dist Double [Int] = do
             n <- uniform [1 .. 4]
             replicateM n (uniform [1 .. 6])
 
