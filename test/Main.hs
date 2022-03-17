@@ -117,7 +117,9 @@ main = hspec $ do
       expectation d `shouldApprox` 2
 
     it "computes the variance of a distribution" $ do
-      let d = truncateDist epsilon (poisson 4) :: Dist Double Double
+      let d =
+            truncateDist epsilon (fromInteger <$> poisson 4) ::
+              Dist Double Double
       expectation d `shouldApprox` 4
       variance d `shouldApprox` 4
       stddev d `shouldApprox` 2
@@ -125,7 +127,7 @@ main = hspec $ do
   describe "info theory" $ do
     it "example" $ do
       -- Our fundamental unit of information theory will be the bit, and the
-      -- *entropy* of a probability distribution tells us how many bits of
+      -- entropy* of a probability distribution tells us how many bits of
       -- information you would learn by knowing a value chosen from that
       -- distribution.
       --
