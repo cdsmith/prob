@@ -1,8 +1,8 @@
 # prob
 
 A monad for discrete probability distributions in Haskell.  The type
-`Dist prob a` represents a probability distribution over values of `a`, with
-probability represented by the type `prob`.  The meaning is very similar to
+`Distribution prob a` represents a probability distribution over values of `a`,
+with probability represented by the type `prob`.  The meaning is very similar to
 https://hackage.haskell.org/package/probability. However, this implementation is
 carefully designed to work with potentially infinite distributions and recursive
 do blocks, which do not always work correctly there.
@@ -46,17 +46,17 @@ ghci>
 
 Left to run long enough, the program will continue to emit possibilities, with
 the sums converging toward the expected result of a 0.2 probability of rolling
-each number from 2 through 6.  You can also use truncation to approximate the
+each number from 2 through 6.  You can also use `finitize` to approximate the
 result:
 
 ```
-ghci> possibilities $ simplify (truncateDist 0.00001 d)
+ghci> possibilities $ simplify (finitize 0.00001 d)
 [(0.19999998015419398,2), (0.19999988092516383,3), (0.19999928555098298,4),
 (0.19999571330589844,5),(0.20000514006376077,6)]
 ghci> 
 ```
 
-Internally, a value of type `Dist prob a` is represented not as a list of
-possibilities but as a binary decision tree.  This is a rich enough structure to
-allow productive enumeration of all possibilities using a breadth-first
+Internally, a value of type `Distribution prob a` is represented not as a list
+of possibilities but as a binary decision tree.  This is a rich enough structure
+to allow productive enumeration of all possibilities using a breadth-first
 traversal, even if the process described is infinite and left recursive.
