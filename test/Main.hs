@@ -9,11 +9,11 @@ import Test.Hspec
 
 -- | A probability distribution with Rational probabilities.  This is convenient
 -- in testing so that we can check for exact values.
-type ExactDist a = Dist Rational a
+type ExactDist a = Distribution Rational a
 
 -- | A probability distribution with Double probabilities and values.  This is
 -- inexact, but allows the maximum flexibility.
-type DoubleDist = Dist Double Double
+type DoubleDist = Distribution Double Double
 
 epsilon :: Fractional a => a
 epsilon = 1e-7
@@ -81,7 +81,7 @@ main = hspec $ do
 
     describe "poisson" $ do
       it "assigns the right probabilities" $ do
-        let dist = poisson 3 :: Dist Double Int
+        let dist = poisson 3 :: Distribution Double Int
         approxProbability epsilon dist (== 0) `shouldApprox` (1 / exp 3)
         approxProbability epsilon dist (== 1) `shouldApprox` (3 / exp 3)
         approxProbability epsilon dist (== 2) `shouldApprox` (4.5 / exp 3)
@@ -118,11 +118,11 @@ main = hspec $ do
     it "computes the expected value of a distribution" $ do
       expectation (uniform [1 .. 5] :: ExactDist Rational) `shouldBe` 3
 
-      let dist = truncateDist epsilon (geometric 0.5 [1 ..]) :: DoubleDist
+      let dist = finitize epsilon (geometric 0.5 [1 ..]) :: DoubleDist
       expectation dist `shouldApprox` 2
 
     it "computes the variance of a distribution" $ do
-      let dist = truncateDist epsilon (fromInteger <$> poisson 4) :: DoubleDist
+      let dist = finitize epsilon (fromInteger <$> poisson 4) :: DoubleDist
       expectation dist `shouldApprox` 4
       variance dist `shouldApprox` 4
       stddev dist `shouldApprox` 2
@@ -135,23 +135,23 @@ main = hspec $ do
       -- distribution.
       --
       -- A choice between two options can be represented with one bit.
-      entropy (uniform [0, 1] :: Dist Double Int) `shouldApprox` 1
+      entropy (uniform [0, 1] :: Distribution Double Int) `shouldApprox` 1
 
       -- On the other hand, choosing between 32 options requires 5 bits.
-      entropy (uniform [1 .. 32] :: Dist Double Int) `shouldApprox` 5
+      entropy (uniform [1 .. 32] :: Distribution Double Int) `shouldApprox` 5
 
       -- The picture gets messier if the distribution is not uniform.  If
       -- you flip a biased coin that almost always comes up heads, then you
       -- nearly know the outcome before the coin flip even happens.  The entropy
       -- of this distribution is low.  You can also thing of entropy as a
       -- measure of uncertainty.
-      entropy (bernoulli 0.999 :: Dist Double Bool)
+      entropy (bernoulli 0.999 :: Distribution Double Bool)
         `shouldApprox` 0.011407757737461145
 
       -- We can explore more about information theory with a more advanced
       -- example.  We'll use the stochastic process from earlier, where we roll
       -- a d4, then roll that number of d6.
-      let dist :: Dist Double [Int] = do
+      let dist :: Distribution Double [Int] = do
             n <- uniform [1 .. 4]
             replicateM n (uniform [1 .. 6])
 

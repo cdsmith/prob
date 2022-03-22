@@ -1,9 +1,10 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE TupleSections #-}
 
--- | This module defines the 'Dist' monad and its operations.
+-- | This module defines the 'Distribution' monad and its operations.
 --
--- A @'Dist' a@ is a discrete probability distribution over values of type @a@.
+-- A @'Distribution' a@ is a discrete probability distribution over values of
+-- type @a@.
 --
 -- You can define distributions in several ways:
 --
@@ -29,12 +30,12 @@
 -- and will hang or OOM if given an infinite distribution.
 module Probability.Distribution
   ( -- * Types
-    Dist,
+    Distribution,
     possibilities,
-    truncateDist,
     probabilities,
     simplify,
     sample,
+    finitize,
     conditional,
     finiteConditional,
 
@@ -73,24 +74,24 @@ import Data.Tuple (swap)
 import System.Random (randomRIO)
 
 -- | A probability distribution of values.
-data Dist prob a
+data Distribution prob a
   = Certainly a
-  | Choice prob (Dist prob a) (Dist prob a)
+  | Choice prob (Distribution prob a) (Distribution prob a)
   deriving (Functor)
 
-instance Bifunctor Dist where
+instance Bifunctor Distribution where
   bimap _ g (Certainly a) = Certainly (g a)
   bimap f g (Choice p a b) = Choice (f p) (bimap f g a) (bimap f g b)
 
-instance Applicative (Dist prob) where
+instance Applicative (Distribution prob) where
   pure = Certainly
   (<*>) = ap
 
-instance Monad (Dist prob) where
+instance Monad (Distribution prob) where
   Certainly x >>= f = f x
   Choice p a b >>= f = Choice p (a >>= f) (b >>= f)
 
-instance Num a => Num (Dist prob a) where
+instance Num a => Num (Distribution prob a) where
   (+) = liftA2 (+)
   (-) = liftA2 (-)
   (*) = liftA2 (*)
@@ -99,7 +100,7 @@ instance Num a => Num (Dist prob a) where
   negate = fmap negate
   fromInteger = pure . fromInteger
 
-instance Fractional a => Fractional (Dist prob a) where
+instance Fractional a => Fractional (Distribution prob a) where
   (/) = liftA2 (/)
   recip = fmap recip
   fromRational = pure . fromRational
@@ -110,8 +111,8 @@ instance Fractional a => Fractional (Dist prob a) where
 -- the true probability for that outcome is the sum of all entries.
 --
 -- In the finite case, multiple entries can be combined by using 'simplify' on
--- the 'Dist' first.
-possibilities :: Num prob => Dist prob a -> [(prob, a)]
+-- the 'Distribution' first.
+possibilities :: Num prob => Distribution prob a -> [(prob, a)]
 possibilities dist = go (Seq.singleton (1, dist))
   where
     go Seq.Empty = []
@@ -122,8 +123,12 @@ possibilities dist = go (Seq.singleton (1, dist))
 -- | Truncates an infinite distribution to make it finite.  The epsilon
 -- parameter is the amount of tail probability that you're willing to ignore
 -- and assign to an arbitrary outcome.
-truncateDist :: (Fractional prob, Ord prob) => prob -> Dist prob a -> Dist prob a
-truncateDist epsilon = categorical . go 1 . possibilities
+finitize ::
+  (Fractional prob, Ord prob) =>
+  prob ->
+  Distribution prob a ->
+  Distribution prob a
+finitize epsilon = categorical . go 1 . possibilities
   where
     go q ((p, x) : poss)
       | q - p < epsilon = [(q, x)]
@@ -135,7 +140,7 @@ truncateDist epsilon = categorical . go 1 . possibilities
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-probabilities :: (Num prob, Ord a) => Dist prob a -> Map a prob
+probabilities :: (Num prob, Ord a) => Distribution prob a -> Map a prob
 probabilities = Map.fromListWith (+) . fmap swap . possibilities
 
 -- | Simplifies a finite distribution.
@@ -143,11 +148,12 @@ probabilities = Map.fromListWith (+) . fmap swap . possibilities
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-simplify :: (Fractional prob, Ord a) => Dist prob a -> Dist prob a
+simplify ::
+  (Fractional prob, Ord a) => Distribution prob a -> Distribution prob a
 simplify = categorical . fmap swap . Map.toList . probabilities
 
 -- | Samples the probability distribution to produce a value.
-sample :: (Real prob) => Dist prob a -> IO a
+sample :: (Real prob) => Distribution prob a -> IO a
 sample (Certainly x) = return x
 sample (Choice p a b) =
   bool (sample b) (sample a) . (< realToFrac p) =<< randomRIO (0 :: Double, 1)
@@ -155,7 +161,7 @@ sample (Choice p a b) =
 -- | Produces the conditional probability distribution, assuming some event.
 -- This function works for all distributions, but always produces an infinite
 -- distribution for non-trivial events.
-conditional :: (a -> Bool) -> Dist prob a -> Dist prob a
+conditional :: (a -> Bool) -> Distribution prob a -> Distribution prob a
 conditional event dist = cdist
   where
     cdist = do
@@ -170,7 +176,7 @@ conditional event dist = cdist
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
 finiteConditional ::
-  Fractional prob => (a -> Bool) -> Dist prob a -> Dist prob a
+  Fractional prob => (a -> Bool) -> Distribution prob a -> Distribution prob a
 finiteConditional event dist = categorical (map (first (/ p_event)) filtered)
   where
     filtered = filter (event . snd) (possibilities dist)
@@ -178,7 +184,7 @@ finiteConditional event dist = categorical (map (first (/ p_event)) filtered)
 
 -- | A distribution with a fixed probability for each outcome.  The
 -- probabilities should add to 1, but this is not checked.
-categorical :: Fractional prob => [(prob, a)] -> Dist prob a
+categorical :: Fractional prob => [(prob, a)] -> Distribution prob a
 categorical = go 1
   where
     go _ [] = error "Empty distribution is not allowed"
@@ -186,18 +192,18 @@ categorical = go 1
     go p ((q, x) : xs) = Choice (q / p) (Certainly x) (go (p - q) xs)
 
 -- | A uniform distribution over a list of values.
-uniform :: Fractional prob => [a] -> Dist prob a
+uniform :: Fractional prob => [a] -> Distribution prob a
 uniform xs = categorical $ (recip n,) <$> xs where n = realToFrac (length xs)
 
 -- | Geometric distribution over a list of possibilities.
-geometric :: prob -> [a] -> Dist prob a
+geometric :: prob -> [a] -> Distribution prob a
 geometric _ [] = error "geometric: Empty distribution is not allowed"
 geometric _ [x] = Certainly x
 geometric p (x : xs) = Choice p (Certainly x) (geometric p xs)
 
 -- | A Bernoulli distribution.  This gives True with probability @p@, and False
 -- otherwise.
-bernoulli :: prob -> Dist prob Bool
+bernoulli :: prob -> Distribution prob Bool
 bernoulli p = Choice p (Certainly True) (Certainly False)
 
 -- | Computes nCk.  This is a building block for several well-known discrete
@@ -209,7 +215,7 @@ n `choose` k
 
 -- | A binomial distribution.  This gives the distribution of number of
 -- successes in @n@ trials with probability @p@ of success.
-binomial :: (Fractional prob, Integral n) => prob -> n -> Dist prob n
+binomial :: (Fractional prob, Integral n) => prob -> n -> Distribution prob n
 binomial p n =
   categorical
     [ (fromIntegral (n `choose` k) * p ^ k * (1 - p) ^ (n - k), k)
@@ -218,7 +224,8 @@ binomial p n =
 
 -- | Negative binomial distribution.  This gives the distribution of number of
 -- failures before @r@ successes with probability @p@ of success.
-negativeBinomial :: (Fractional prob, Integral n) => prob -> n -> Dist prob n
+negativeBinomial ::
+  (Fractional prob, Integral n) => prob -> n -> Distribution prob n
 negativeBinomial _ 0 = pure 0
 negativeBinomial p r =
   categorical
@@ -229,7 +236,8 @@ negativeBinomial p r =
 -- | Hypergeometric distribution.  This gives the distribution of number of
 -- successful draws out of @n@ attempts without replacement, when @k@
 -- possibilities are successful.
-hypergeometric :: (Fractional prob, Integral n) => n -> n -> n -> Dist prob n
+hypergeometric ::
+  (Fractional prob, Integral n) => n -> n -> n -> Distribution prob n
 hypergeometric pop k n =
   categorical
     [ ( fromIntegral ((k `choose` m) * ((pop - k) `choose` (n - m)))
@@ -245,10 +253,10 @@ hypergeometric pop k n =
 -- | Poisson distribution.  Gives the number of independent events occurring in
 -- a fixed time interval, if events are occurring at the given expected rate per
 -- time interval.
-poisson :: (Floating prob, Integral a) => prob -> Dist prob a
+poisson :: (Floating prob, Integral a) => prob -> Distribution prob a
 poisson lambda =
   categorical
-    [ ( lambda ^ k * exp (-lambda) / fromIntegral (product [1 .. k]), k)
+    [ (lambda ^ k * exp (-lambda) / fromIntegral (product [1 .. k]), k)
       | k <- [0 ..]
     ]
 
@@ -257,7 +265,7 @@ poisson lambda =
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-probability :: Num prob => Dist prob a -> (a -> Bool) -> prob
+probability :: Num prob => Distribution prob a -> (a -> Bool) -> prob
 probability (Certainly x) event = if event x then 1 else 0
 probability (Choice p a b) event =
   p * probability a event + (1 - p) * probability b event
@@ -265,7 +273,8 @@ probability (Choice p a b) event =
 -- | Like probability, but produces a lazy list of ever-improving bounds on the
 -- probability.  This can be used on infinite distributions, for which the
 -- exact probability cannot be calculated.
-probabilityBounds :: Num prob => Dist prob a -> (a -> Bool) -> [(prob, prob)]
+probabilityBounds ::
+  Num prob => Distribution prob a -> (a -> Bool) -> [(prob, prob)]
 probabilityBounds dist event = go 0 1 (possibilities dist)
   where
     go p _ [] = [(p, p)]
@@ -277,7 +286,11 @@ probabilityBounds dist event = go 0 1 (possibilities dist)
 -- probability by at most epsilon. This can be used on infinite distributions,
 -- for which the exact probability cannot be calculated.
 approxProbability ::
-  (Ord prob, Fractional prob) => prob -> Dist prob a -> (a -> Bool) -> prob
+  (Ord prob, Fractional prob) =>
+  prob ->
+  Distribution prob a ->
+  (a -> Bool) ->
+  prob
 approxProbability epsilon dist event =
   (/ 2) . uncurry (+) . head . dropWhile ((> epsilon) . abs . uncurry (-)) $
     probabilityBounds dist event
@@ -287,7 +300,7 @@ approxProbability epsilon dist event =
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-expectation :: Num a => Dist a a -> a
+expectation :: Num a => Distribution a a -> a
 expectation (Certainly x) = x
 expectation (Choice p a b) =
   p * expectation a + (1 - p) * expectation b
@@ -297,7 +310,7 @@ expectation (Choice p a b) =
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-variance :: Num a => Dist a a -> a
+variance :: Num a => Distribution a a -> a
 variance dist = expectation ((^ (2 :: Int)) . subtract mean <$> dist)
   where
     mean = expectation dist
@@ -307,7 +320,7 @@ variance dist = expectation ((^ (2 :: Int)) . subtract mean <$> dist)
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-stddev :: Floating a => Dist a a -> a
+stddev :: Floating a => Distribution a a -> a
 stddev dist = sqrt (variance dist)
 
 -- | Computes the entropy of a distribution in bits.
@@ -315,7 +328,7 @@ stddev dist = sqrt (variance dist)
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-entropy :: (Floating prob, Ord a) => Dist prob a -> prob
+entropy :: (Floating prob, Ord a) => Distribution prob a -> prob
 entropy dist =
   sum
     [ -p * logBase 2 p
@@ -329,7 +342,10 @@ entropy dist =
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
 relativeEntropy ::
-  (Eq prob, Floating prob, Ord a) => Dist prob a -> Dist prob a -> prob
+  (Eq prob, Floating prob, Ord a) =>
+  Distribution prob a ->
+  Distribution prob a ->
+  prob
 relativeEntropy a b = sum (term <$> Set.toList vals)
   where
     prob_a = probabilities a
@@ -350,7 +366,7 @@ relativeEntropy a b = sum (term <$> Set.toList vals)
 -- reach those outcomes) will hang.
 mutualInformation ::
   (Eq prob, Floating prob, Ord b, Ord c) =>
-  Dist prob a ->
+  Distribution prob a ->
   (a -> b) ->
   (a -> c) ->
   prob
