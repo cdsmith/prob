@@ -1,9 +1,20 @@
 cabal-version:      2.4
 name:               prob
 version:            0.1.0.0
+synopsis:           Discrete probability monad
+description:        Provides the `Distribution` monad, which describes discrete
+                    probability distributions.
+category:           Math
+homepage:           https://github.com/cdsmith/prob
+bug-reports:        https://github.com/cdsmith/prob/issues
+license:            BSD-3-Clause
+license-file:       LICENSE
 
 author:             Chris Smith and Shae Erisson
+maintainer:         Chris Smith <cdsmith@gmail.com>
 extra-source-files: CHANGELOG.md
+
+tested-with:        GHC == 8.6.5 || == 8.8.4 || == 8.10.4 || == 9.0.1
 
 library
     exposed-modules:  Probability.Distribution
