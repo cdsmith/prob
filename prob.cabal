@@ -6,7 +6,7 @@ author:             Chris Smith and Shae Erisson
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  Dist
+    exposed-modules:  Probability.Distribution
 
     build-depends:    base ^>=4.15.0.0,
                       containers,

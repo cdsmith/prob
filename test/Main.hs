@@ -4,7 +4,7 @@ module Main where
 
 import Control.Monad (replicateM, replicateM_)
 import Data.List (sort)
-import Dist
+import Probability.Distribution
 import Test.Hspec
 
 -- | A probability distribution with Rational probabilities.  This is convenient

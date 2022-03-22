@@ -27,7 +27,7 @@
 -- to reach these outcomes.  Infinite distributions typically arise from
 -- recursive expressions.  Certain functions only work on finite distributions,
 -- and will hang or OOM if given an infinite distribution.
-module Dist
+module Probability.Distribution
   ( -- * Types
     Dist,
     possibilities,
