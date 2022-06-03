@@ -87,6 +87,14 @@ main = hspec $ do
         approxProbability epsilon dist (== 2) `shouldApprox` (4.5 / exp 3)
         approxProbability epsilon dist (== 3) `shouldApprox` (4.5 / exp 3)
 
+  describe "conditionals and splits" $ do
+    it "splits a distribution" $ do
+      let dist = uniform [1 .. 10] :: ExactDist Int
+      let (p, a, b) = split dist (> 7)
+      p `shouldBe` 3 / 10
+      probability a even `shouldBe` 2 / 3
+      probability b even `shouldBe` 3 / 7
+
   describe "Dist" $ do
     it "can describe a stochastic process" $ do
       let dist :: ExactDist [Int] = do
@@ -143,7 +151,7 @@ main = hspec $ do
       -- The picture gets messier if the distribution is not uniform.  If
       -- you flip a biased coin that almost always comes up heads, then you
       -- nearly know the outcome before the coin flip even happens.  The entropy
-      -- of this distribution is low.  You can also thing of entropy as a
+      -- of this distribution is low.  You can also think of entropy as a
       -- measure of uncertainty.
       entropy (bernoulli 0.999 :: Distribution Double Bool)
         `shouldApprox` 0.011407757737461145
@@ -277,3 +285,34 @@ main = hspec $ do
             return $ relativeEntropy (sum <$> cond) (sum <$> dist)
 
       mutualInformation dist length sum `shouldApprox` expectedRelativeEntropy
+
+  describe "bayesian" $ do
+    -- We have a coin that might be fair (equal chance of heads or tails), or
+    -- might be biased (0.75 chance of heads, 0.25 chance of tails).  As a
+    -- prior, each is equally likely.
+    let model = bernoulli :: Rational -> ExactDist Bool
+        prior = uniform [0.75, 0.5]
+
+    it "works in general" $ do
+      -- We will flip the coin once, and update our estimate of the chance the
+      -- coin is fair.
+      let ifHeads = bayesian model (== True) prior
+          ifTails = bayesian model (== False) prior
+
+      -- If the coin comes up heads, we estimate it is the biased one with a
+      -- 3/5 probability.
+      --
+      -- By Bayes' Law, P(B|H) = P(H|B) * P(B)  / P(H)
+      --                       = (3/4)  * (1/2) / (1/2 * 3/4 + 1/2 * 1/2)
+      --                       = 3/5
+      approxProbability epsilon ifHeads (> 0.5) `shouldApprox` (3 / 5)
+
+      -- If the coin comes up tails, we estimate it is the biased one with a
+      -- 1/3 probability.  This is slow, so we choose a smaller epsilon.
+      approxProbability 0.01 ifTails (> 0.5) `shouldSatisfy` \x -> abs (x - 1 / 3) < 0.01
+
+    it "works exactly with finite version" $ do
+      let ifHeads = finiteBayesian model (== True) prior
+          ifTails = finiteBayesian model (== False) prior
+      probability ifHeads (> 0.5) `shouldBe` (3 / 5)
+      probability ifTails (> 0.5) `shouldBe` (1 / 3)

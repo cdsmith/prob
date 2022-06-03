@@ -35,9 +35,12 @@ module Probability.Distribution
     probabilities,
     simplify,
     sample,
+    split,
     finitize,
     conditional,
     finiteConditional,
+    bayesian,
+    finiteBayesian,
 
     -- * Common distributions
     categorical,
@@ -158,6 +161,39 @@ sample (Certainly x) = return x
 sample (Choice p a b) =
   bool (sample b) (sample a) . (< realToFrac p) =<< randomRIO (0 :: Double, 1)
 
+-- | Divides a probability distribution into the probability of an event, and
+-- conditional distributions based on whether the event occurs.  If
+-- @'split' dist event = (p, dist1, dist2)@, then:
+--
+-- 1. @dist = 'bernoulli' p '>>=' 'bool' dist1 dist2@
+-- 2. If @p > 0@, then @'probability' dist1 event = 1@
+-- 3. If @p < 1@, then @'probability' dist2 event = 0@
+--
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
+split ::
+  (Eq prob, Fractional prob) =>
+  Distribution prob a ->
+  (a -> Bool) ->
+  (prob, Distribution prob a, Distribution prob a)
+split (Certainly x) event
+  | event x = (1, Certainly x, undefined)
+  | otherwise = (0, undefined, Certainly x)
+split (Choice p a b) event = (p', d1, d2)
+  where
+    (q, a1, a2) = split a event
+    d1
+      | r == 0 = a1
+      | q == 0 = b1
+      | otherwise = Choice (p * q / p') a1 b1
+    (r, b1, b2) = split b event
+    d2
+      | r == 1 = a2
+      | q == 1 = b2
+      | otherwise = Choice (p * (1 - q) / (1 - p')) a2 b2
+    p' = p * q + (1 - p) * r
+
 -- | Produces the conditional probability distribution, assuming some event.
 -- This function works for all distributions, but always produces an infinite
 -- distribution for non-trivial events.
@@ -181,6 +217,43 @@ finiteConditional event dist = categorical (map (first (/ p_event)) filtered)
   where
     filtered = filter (event . snd) (possibilities dist)
     p_event = sum (map fst filtered)
+
+-- | Updates a prior distribution of parameters for a model, based on an
+-- observed event.  This implements Bayes' Law for distributions.
+--
+-- This function works for all distributions, but always produces an infinite
+-- distribution for non-trivial events.
+bayesian ::
+  (param -> Distribution prob a) ->
+  (a -> Bool) ->
+  Distribution prob param ->
+  Distribution prob param
+bayesian model event prior = posterior
+  where
+    posterior = do
+      param <- prior
+      x <- model param
+      if event x then return param else posterior
+
+-- | Updates a prior distribution of parameters for a model, based on an
+-- observed event.  This implements Bayes' Law for distributions.
+--
+-- This only works for finite distributions.  Infinite distributions (including
+-- even distributions with finitely many outcomes, but infinitely many paths to
+-- reach those outcomes) will hang.
+finiteBayesian ::
+  (Eq prob, Fractional prob) =>
+  (param -> Distribution prob a) ->
+  (a -> Bool) ->
+  Distribution prob param ->
+  Distribution prob param
+finiteBayesian model event prior = fst <$> post
+  where
+    withParam = do
+      param <- prior
+      obs <- model param
+      return (param, obs)
+    (_, post, _) = split withParam (event . snd)
 
 -- | A distribution with a fixed probability for each outcome.  The
 -- probabilities should add to 1, but this is not checked.
@@ -346,14 +419,14 @@ relativeEntropy ::
   Distribution prob a ->
   Distribution prob a ->
   prob
-relativeEntropy a b = sum (term <$> Set.toList vals)
+relativeEntropy post prior = sum (term <$> Set.toList vals)
   where
-    prob_a = probabilities a
-    prob_b = probabilities b
-    vals = Map.keysSet prob_a `Set.union` Map.keysSet prob_b
+    prob_post = probabilities post
+    prob_prior = probabilities prior
+    vals = Map.keysSet prob_post `Set.union` Map.keysSet prob_prior
     term x =
-      let p = Map.findWithDefault 0 x prob_a
-          q = Map.findWithDefault 0 x prob_b
+      let p = Map.findWithDefault 0 x prob_post
+          q = Map.findWithDefault 0 x prob_prior
        in if p == 0 then 0 else p * logBase 2 (p / q)
 
 -- | Computes the mutual information between two random variables, in bits.  The

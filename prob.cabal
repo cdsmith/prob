@@ -19,7 +19,7 @@ tested-with:        GHC == 8.6.5 || == 8.8.4 || == 8.10.4 || == 9.0.1
 library
     exposed-modules:  Probability.Distribution
 
-    build-depends:    base ^>=4.15.0.0,
+    build-depends:    base >= 4.12 && < 5,
                       containers,
                       random
     hs-source-dirs:   src
@@ -29,7 +29,7 @@ library
 test-suite tests
     type:             exitcode-stdio-1.0
     main-is:          Main.hs
-    build-depends:    base ^>=4.15.0.0,
+    build-depends:    base >= 4.12 && < 5,
                       hspec,
                       prob
     hs-source-dirs:   test
