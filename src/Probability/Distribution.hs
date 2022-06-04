@@ -28,14 +28,23 @@
 -- to reach these outcomes.  Infinite distributions typically arise from
 -- recursive expressions.  Certain functions only work on finite distributions,
 -- and will hang or OOM if given an infinite distribution.
+--
+-- For example, if you express the process of rolling a six-sided die, but
+-- always rerolling if the result is one, then there are five distinct outcomes:
+-- 2, 3, 4, 5, or 6.  Nevertheless, this is an infinite distribution, because
+-- it's possible to roll any number of ones prior to the final result.
 module Probability.Distribution
   ( -- * Types
     Distribution,
+    EventView(..),
+
+    -- * Basic operations
     possibilities,
     probabilities,
     simplify,
     sample,
-    split,
+    viewEvent,
+    fromEventView,
     finitize,
     conditional,
     finiteConditional,
@@ -161,38 +170,62 @@ sample (Certainly x) = return x
 sample (Choice p a b) =
   bool (sample b) (sample a) . (< realToFrac p) =<< randomRIO (0 :: Double, 1)
 
--- | Divides a probability distribution into the probability of an event, and
--- conditional distributions based on whether the event occurs.  If
--- @'split' dist event = (p, dist1, dist2)@, then:
+-- | A view of a probability distribution from the point of view of a given
+-- event.  The event either always happens, never happens, or happens sometimes
+-- with some probability.  In the latter case, there are posterior distributions
+-- for when the event does or does not happen.
+data EventView prob a
+  = Always (Distribution prob a)
+  | Never (Distribution prob a)
+  | Sometimes prob (Distribution prob a) (Distribution prob a)
+
+-- | Gives a view on a probability distribution relative to some event.
 --
--- 1. @dist = 'bernoulli' p '>>=' 'bool' dist1 dist2@
--- 2. If @p > 0@, then @'probability' dist1 event = 1@
--- 3. If @p < 1@, then @'probability' dist2 event = 0@
+-- The following are guaranteed.
+-- 1. @'fromEventView' . 'viewEvent' ev = id@
+-- 2. If @'viewEvent' ev dist = 'Always' dist'@, then @dist = dist'@ and @'probability' ev dist = 1@.
+-- 3. If @'viewEvent' ev dist = 'Never' dist'@, then @dist = dist'@ and @'probability' ev dist = 0@.
+-- 4. If @'viewEvent' ev dist = 'Sometimes' p a b@, then:
+--    * @dist = 'bernoulli' p >>= bool a b@
+--    * @'probability' ev a = 1@
+--    * @'probability' ev b = 0@
 --
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-split ::
-  (Eq prob, Fractional prob) =>
-  Distribution prob a ->
+viewEvent ::
+  Fractional prob =>
   (a -> Bool) ->
-  (prob, Distribution prob a, Distribution prob a)
-split (Certainly x) event
-  | event x = (1, Certainly x, undefined)
-  | otherwise = (0, undefined, Certainly x)
-split (Choice p a b) event = (p', d1, d2)
+  Distribution prob a ->
+  EventView prob a
+viewEvent event dist@(Certainly x)
+  | event x = Always dist
+  | otherwise = Never dist
+viewEvent event dist@(Choice p aa bb) = case (viewEvent event aa, viewEvent event bb) of
+  (Never _, Never _) -> Never dist
+  (Always _, Always _) -> Always dist
+  (Always a, Never b) -> Sometimes p a b
+  (Never a, Always b) -> Sometimes (1 - p) b a
+  (Sometimes q a1 a2, Never b) ->
+    let (p', _, p2) = blend q 0 in Sometimes p' a1 (Choice p2 a2 b)
+  (Sometimes q a1 a2, Always b) ->
+    let (p', p1, _) = blend q 1 in Sometimes p' (Choice p1 a1 b) a2
+  (Never a, Sometimes r b1 b2) ->
+    let (p', _, p2) = blend 0 r in Sometimes p' b1 (Choice p2 a b2)
+  (Always a, Sometimes r b1 b2) ->
+    let (p', p1, _) = blend 1 r in Sometimes p' (Choice p1 a b1) b2
+  (Sometimes q a1 a2, Sometimes r b1 b2) ->
+    let (p', p1, p2) = blend q r
+     in Sometimes p' (Choice p1 a1 b1) (Choice p2 a2 b2)
   where
-    (q, a1, a2) = split a event
-    d1
-      | r == 0 = a1
-      | q == 0 = b1
-      | otherwise = Choice (p * q / p') a1 b1
-    (r, b1, b2) = split b event
-    d2
-      | r == 1 = a2
-      | q == 1 = b2
-      | otherwise = Choice (p * (1 - q) / (1 - p')) a2 b2
-    p' = p * q + (1 - p) * r
+    blend q r =
+      let p' = p * q + (1 - p) * r
+       in (p', p * q / p', p * (1 - q) / (1 - p'))
+
+fromEventView :: EventView prob a -> Distribution prob a
+fromEventView (Always dist) = dist
+fromEventView (Never dist) = dist
+fromEventView (Sometimes p a b) = Choice p a b
 
 -- | Produces the conditional probability distribution, assuming some event.
 -- This function works for all distributions, but always produces an infinite
@@ -247,13 +280,15 @@ finiteBayesian ::
   (a -> Bool) ->
   Distribution prob param ->
   Distribution prob param
-finiteBayesian model event prior = fst <$> post
+finiteBayesian model event prior = case viewEvent (event . snd) withParam of
+  Always dist -> fst <$> dist
+  Never _ -> error "Posterior is undefined for an impossible event"
+  Sometimes _ dist _ -> fst <$> dist
   where
     withParam = do
       param <- prior
       obs <- model param
       return (param, obs)
-    (_, post, _) = split withParam (event . snd)
 
 -- | A distribution with a fixed probability for each outcome.  The
 -- probabilities should add to 1, but this is not checked.
@@ -338,17 +373,17 @@ poisson lambda =
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-probability :: Num prob => Distribution prob a -> (a -> Bool) -> prob
-probability (Certainly x) event = if event x then 1 else 0
-probability (Choice p a b) event =
-  p * probability a event + (1 - p) * probability b event
+probability :: Num prob => (a -> Bool) -> Distribution prob a -> prob
+probability event (Certainly x) = if event x then 1 else 0
+probability event (Choice p a b) =
+  p * probability event a + (1 - p) * probability event b
 
 -- | Like probability, but produces a lazy list of ever-improving bounds on the
 -- probability.  This can be used on infinite distributions, for which the
 -- exact probability cannot be calculated.
 probabilityBounds ::
-  Num prob => Distribution prob a -> (a -> Bool) -> [(prob, prob)]
-probabilityBounds dist event = go 0 1 (possibilities dist)
+  Num prob => (a -> Bool) -> Distribution prob a -> [(prob, prob)]
+probabilityBounds event dist = go 0 1 (possibilities dist)
   where
     go p _ [] = [(p, p)]
     go p q ((q', x) : xs)
@@ -361,12 +396,12 @@ probabilityBounds dist event = go 0 1 (possibilities dist)
 approxProbability ::
   (Ord prob, Fractional prob) =>
   prob ->
-  Distribution prob a ->
   (a -> Bool) ->
+  Distribution prob a ->
   prob
-approxProbability epsilon dist event =
+approxProbability epsilon event dist =
   (/ 2) . uncurry (+) . head . dropWhile ((> epsilon) . abs . uncurry (-)) $
-    probabilityBounds dist event
+    probabilityBounds event dist
 
 -- | Computes the expected value of a finite distribution.
 --
@@ -439,11 +474,11 @@ relativeEntropy post prior = sum (term <$> Set.toList vals)
 -- reach those outcomes) will hang.
 mutualInformation ::
   (Eq prob, Floating prob, Ord b, Ord c) =>
-  Distribution prob a ->
   (a -> b) ->
   (a -> c) ->
+  Distribution prob a ->
   prob
-mutualInformation dist f g =
+mutualInformation f g dist =
   sum (term <$> Map.keys f_probs <*> Map.keys g_probs)
   where
     joint_probs = probabilities ((\x -> (f x, g x)) <$> dist)

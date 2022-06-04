@@ -31,69 +31,71 @@ main = hspec $ do
       it "assigns the right probabilities" $ do
         let dist =
               categorical [(1 / 2, 1), (1 / 3, 2), (1 / 6, 3)] :: ExactDist Int
-        probability dist (== 1) `shouldBe` 1 / 2
-        probability dist (== 2) `shouldBe` 1 / 3
-        probability dist (== 3) `shouldBe` 1 / 6
+        probability (== 1) dist `shouldBe` 1 / 2
+        probability (== 2) dist `shouldBe` 1 / 3
+        probability (== 3) dist `shouldBe` 1 / 6
 
     describe "uniform" $ do
       it "assigns the right probabilities" $ do
         let dist = uniform [1, 2, 3] :: ExactDist Int
-        probability dist (== 1) `shouldBe` 1 / 3
-        probability dist (== 2) `shouldBe` 1 / 3
-        probability dist (== 3) `shouldBe` 1 / 3
+        probability (== 1) dist `shouldBe` 1 / 3
+        probability (== 2) dist `shouldBe` 1 / 3
+        probability (== 3) dist `shouldBe` 1 / 3
 
     describe "geometric" $ do
       it "assigns the right probabilities" $ do
         let dist = geometric (1 / 3) [1 .. 10] :: ExactDist Int
-        probability dist (== 1) `shouldBe` 1 / 3
-        probability dist (== 2) `shouldBe` 2 / 9
-        probability dist (== 3) `shouldBe` 4 / 27
+        probability (== 1) dist `shouldBe` 1 / 3
+        probability (== 2) dist `shouldBe` 2 / 9
+        probability (== 3) dist `shouldBe` 4 / 27
 
     describe "bernoulli" $ do
       it "assigns the right probabilities" $ do
         let dist = bernoulli (1 / 3) :: ExactDist Bool
-        probability dist (== True) `shouldBe` 1 / 3
-        probability dist (== False) `shouldBe` 2 / 3
+        probability (== True) dist `shouldBe` 1 / 3
+        probability (== False) dist `shouldBe` 2 / 3
 
     describe "binomial" $ do
       it "assigns the right probabilities" $ do
         let dist = binomial (1 / 3) 3 :: ExactDist Int
-        probability dist (== 0) `shouldBe` 08 / 27
-        probability dist (== 1) `shouldBe` 12 / 27
-        probability dist (== 2) `shouldBe` 06 / 27
-        probability dist (== 3) `shouldBe` 01 / 27
+        probability (== 0) dist `shouldBe` 08 / 27
+        probability (== 1) dist `shouldBe` 12 / 27
+        probability (== 2) dist `shouldBe` 06 / 27
+        probability (== 3) dist `shouldBe` 01 / 27
 
     describe "negativeBinomial" $ do
       it "assigns the right probabilities" $ do
         let dist = negativeBinomial (1 / 3) 3 :: ExactDist Int
-        approxProbability epsilon dist (== 0) `shouldApprox` (1 / 27)
-        approxProbability epsilon dist (== 1) `shouldApprox` (2 / 27)
-        approxProbability epsilon dist (== 2) `shouldApprox` (8 / 81)
-        approxProbability epsilon dist (== 3) `shouldApprox` (80 / 729)
+        approxProbability epsilon (== 0) dist `shouldApprox` (1 / 27)
+        approxProbability epsilon (== 1) dist `shouldApprox` (2 / 27)
+        approxProbability epsilon (== 2) dist `shouldApprox` (8 / 81)
+        approxProbability epsilon (== 3) dist `shouldApprox` (80 / 729)
 
     describe "hypergeometric" $ do
       it "assigns the right probabilities" $ do
         let dist = hypergeometric 10 5 3 :: ExactDist Int
-        probability dist (== 0) `shouldBe` 6 / 72
-        probability dist (== 1) `shouldBe` 30 / 72
-        probability dist (== 2) `shouldBe` 30 / 72
-        probability dist (== 3) `shouldBe` 6 / 72
+        probability (== 0) dist `shouldBe` 6 / 72
+        probability (== 1) dist `shouldBe` 30 / 72
+        probability (== 2) dist `shouldBe` 30 / 72
+        probability (== 3) dist `shouldBe` 6 / 72
 
     describe "poisson" $ do
       it "assigns the right probabilities" $ do
         let dist = poisson 3 :: Distribution Double Int
-        approxProbability epsilon dist (== 0) `shouldApprox` (1 / exp 3)
-        approxProbability epsilon dist (== 1) `shouldApprox` (3 / exp 3)
-        approxProbability epsilon dist (== 2) `shouldApprox` (4.5 / exp 3)
-        approxProbability epsilon dist (== 3) `shouldApprox` (4.5 / exp 3)
+        approxProbability epsilon (== 0) dist `shouldApprox` (1 / exp 3)
+        approxProbability epsilon (== 1) dist `shouldApprox` (3 / exp 3)
+        approxProbability epsilon (== 2) dist `shouldApprox` (4.5 / exp 3)
+        approxProbability epsilon (== 3) dist `shouldApprox` (4.5 / exp 3)
 
   describe "conditionals and splits" $ do
     it "splits a distribution" $ do
       let dist = uniform [1 .. 10] :: ExactDist Int
-      let (p, a, b) = split dist (> 7)
-      p `shouldBe` 3 / 10
-      probability a even `shouldBe` 2 / 3
-      probability b even `shouldBe` 3 / 7
+      case viewEvent (> 7) dist of
+        Sometimes p a b -> do
+          p `shouldBe` 3 / 10
+          probability even a `shouldBe` 2 / 3
+          probability even b `shouldBe` 3 / 7
+        _ -> error "viewEvent gave the wrong answer"
 
   describe "Dist" $ do
     it "can describe a stochastic process" $ do
@@ -115,12 +117,12 @@ main = hspec $ do
             n <- uniform [1 .. 6]
             if n == 1 then dist else return n
 
-      approxProbability epsilon dist (== 1) `shouldApprox` 0
-      approxProbability epsilon dist (== 2) `shouldApprox` 0.2
-      approxProbability epsilon dist (== 3) `shouldApprox` 0.2
-      approxProbability epsilon dist (== 4) `shouldApprox` 0.2
-      approxProbability epsilon dist (== 5) `shouldApprox` 0.2
-      approxProbability epsilon dist (== 6) `shouldApprox` 0.2
+      approxProbability epsilon (== 1) dist `shouldApprox` 0
+      approxProbability epsilon (== 2) dist `shouldApprox` 0.2
+      approxProbability epsilon (== 3) dist `shouldApprox` 0.2
+      approxProbability epsilon (== 4) dist `shouldApprox` 0.2
+      approxProbability epsilon (== 5) dist `shouldApprox` 0.2
+      approxProbability epsilon (== 6) dist `shouldApprox` 0.2
 
   describe "stats" $ do
     it "computes the expected value of a distribution" $ do
@@ -271,8 +273,8 @@ main = hspec $ do
       -- bits of info does that tell me about the sum?" It also answers the
       -- converse question: "If I know the sum, how many bits of info does that
       -- tell me about the length?"
-      mutualInformation dist length sum `shouldApprox` 0.8740651192382936
-      mutualInformation dist sum length `shouldApprox` 0.8740651192382936
+      mutualInformation length sum dist `shouldApprox` 0.8740651192382936
+      mutualInformation sum length dist `shouldApprox` 0.8740651192382936
 
       -- An observant reader might notice that the mutual information given
       -- above is the average of the relative entropies for the four possible
@@ -284,7 +286,7 @@ main = hspec $ do
             let cond = finiteConditional ((== x) . length) dist
             return $ relativeEntropy (sum <$> cond) (sum <$> dist)
 
-      mutualInformation dist length sum `shouldApprox` expectedRelativeEntropy
+      mutualInformation length sum dist `shouldApprox` expectedRelativeEntropy
 
   describe "bayesian" $ do
     -- We have a coin that might be fair (equal chance of heads or tails), or
@@ -305,14 +307,14 @@ main = hspec $ do
       -- By Bayes' Law, P(B|H) = P(H|B) * P(B)  / P(H)
       --                       = (3/4)  * (1/2) / (1/2 * 3/4 + 1/2 * 1/2)
       --                       = 3/5
-      approxProbability epsilon ifHeads (> 0.5) `shouldApprox` (3 / 5)
+      approxProbability epsilon (> 0.5) ifHeads `shouldApprox` (3 / 5)
 
       -- If the coin comes up tails, we estimate it is the biased one with a
       -- 1/3 probability.  This is slow, so we choose a smaller epsilon.
-      approxProbability 0.01 ifTails (> 0.5) `shouldSatisfy` \x -> abs (x - 1 / 3) < 0.01
+      approxProbability 0.01 (> 0.5) ifTails `shouldSatisfy` \x -> abs (x - 1 / 3) < 0.01
 
     it "works exactly with finite version" $ do
       let ifHeads = finiteBayesian model (== True) prior
           ifTails = finiteBayesian model (== False) prior
-      probability ifHeads (> 0.5) `shouldBe` (3 / 5)
-      probability ifTails (> 0.5) `shouldBe` (1 / 3)
+      probability (> 0.5) ifHeads `shouldBe` (3 / 5)
+      probability (> 0.5) ifTails `shouldBe` (1 / 3)
