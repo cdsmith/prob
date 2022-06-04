@@ -311,7 +311,8 @@ main = hspec $ do
 
       -- If the coin comes up tails, we estimate it is the biased one with a
       -- 1/3 probability.  This is slow, so we choose a smaller epsilon.
-      approxProbability 0.01 (> 0.5) ifTails `shouldSatisfy` \x -> abs (x - 1 / 3) < 0.01
+      approxProbability 0.01 (> 0.5) ifTails
+        `shouldSatisfy` \x -> abs (x - 1 / 3) < 0.01
 
     it "works exactly with finite version" $ do
       let ifHeads = finiteBayesian model (== True) prior

@@ -10,7 +10,7 @@
 --
 -- * Choosing from the common distributions exported by this module, such as
 --   a 'categorical', 'uniform', 'geometric', 'bernoulli', 'binomial',
---   'negativeBinomial', 'hypergemetric', or 'poisson' distribution.
+--   'negativeBinomial', 'hypergeometric', or 'poisson' distribution.
 -- * Operating on existing distributions using the 'Functor', 'Applicative', and
 --   'Monad' instances, or by conditioning on events using 'conditional' or
 --   'finiteConditional'.
@@ -36,7 +36,9 @@
 module Probability.Distribution
   ( -- * Types
     Distribution,
-    EventView(..),
+    Event,
+    RandVar,
+    EventView (..),
 
     -- * Basic operations
     possibilities,
@@ -117,10 +119,17 @@ instance Fractional a => Fractional (Distribution prob a) where
   recip = fmap recip
   fromRational = pure . fromRational
 
+-- | An event is a predicate on values from a sample space.
+type Event s = s -> Bool
+
+-- | A random variable is a function mapping each element of a sample space to
+-- the corresponding value of the random variable.
+type RandVar s a = s -> a
+
 -- | Gives the list of all possible values of a given probability distribution.
--- Possibilities are returned in decreasing order of probability.  However, the
--- list will often contain multiple entries for the same outcome, in which case
--- the true probability for that outcome is the sum of all entries.
+-- The list will often contain multiple entries for the same outcome, in which
+-- case the true probability for that outcome is the sum of probabilities of all
+-- entries.
 --
 -- In the finite case, multiple entries can be combined by using 'simplify' on
 -- the 'Distribution' first.
@@ -165,7 +174,7 @@ simplify ::
 simplify = categorical . fmap swap . Map.toList . probabilities
 
 -- | Samples the probability distribution to produce a value.
-sample :: (Real prob) => Distribution prob a -> IO a
+sample :: Real prob => Distribution prob a -> IO a
 sample (Certainly x) = return x
 sample (Choice p a b) =
   bool (sample b) (sample a) . (< realToFrac p) =<< randomRIO (0 :: Double, 1)
@@ -174,18 +183,21 @@ sample (Choice p a b) =
 -- event.  The event either always happens, never happens, or happens sometimes
 -- with some probability.  In the latter case, there are posterior distributions
 -- for when the event does or does not happen.
-data EventView prob a
-  = Always (Distribution prob a)
-  | Never (Distribution prob a)
-  | Sometimes prob (Distribution prob a) (Distribution prob a)
+data EventView prob s
+  = Always (Distribution prob s)
+  | Never (Distribution prob s)
+  | Sometimes prob (Distribution prob s) (Distribution prob s)
 
 -- | Gives a view on a probability distribution relative to some event.
 --
 -- The following are guaranteed.
 -- 1. @'fromEventView' . 'viewEvent' ev = id@
--- 2. If @'viewEvent' ev dist = 'Always' dist'@, then @dist = dist'@ and @'probability' ev dist = 1@.
--- 3. If @'viewEvent' ev dist = 'Never' dist'@, then @dist = dist'@ and @'probability' ev dist = 0@.
--- 4. If @'viewEvent' ev dist = 'Sometimes' p a b@, then:
+-- 2. If @'viewEvent' ev dist = 'Always' dist'@, then @dist = dist'@ and
+--    @'probability' ev dist = 1@.
+-- 3. If @'viewEvent' ev dist = 'Never' dist'@, then @dist = dist'@ and
+--    @'probability' ev dist = 0@.
+-- 4. If @'viewEvent' ev dist = 'Sometimes' p a b@, then
+--    @'probability' ev dist = p@ and:
 --    * @dist = 'bernoulli' p >>= bool a b@
 --    * @'probability' ev a = 1@
 --    * @'probability' ev b = 0@
@@ -195,34 +207,37 @@ data EventView prob a
 -- reach those outcomes) will hang.
 viewEvent ::
   Fractional prob =>
-  (a -> Bool) ->
-  Distribution prob a ->
-  EventView prob a
+  Event s ->
+  Distribution prob s ->
+  EventView prob s
 viewEvent event dist@(Certainly x)
   | event x = Always dist
   | otherwise = Never dist
-viewEvent event dist@(Choice p aa bb) = case (viewEvent event aa, viewEvent event bb) of
-  (Never _, Never _) -> Never dist
-  (Always _, Always _) -> Always dist
-  (Always a, Never b) -> Sometimes p a b
-  (Never a, Always b) -> Sometimes (1 - p) b a
-  (Sometimes q a1 a2, Never b) ->
-    let (p', _, p2) = blend q 0 in Sometimes p' a1 (Choice p2 a2 b)
-  (Sometimes q a1 a2, Always b) ->
-    let (p', p1, _) = blend q 1 in Sometimes p' (Choice p1 a1 b) a2
-  (Never a, Sometimes r b1 b2) ->
-    let (p', _, p2) = blend 0 r in Sometimes p' b1 (Choice p2 a b2)
-  (Always a, Sometimes r b1 b2) ->
-    let (p', p1, _) = blend 1 r in Sometimes p' (Choice p1 a b1) b2
-  (Sometimes q a1 a2, Sometimes r b1 b2) ->
-    let (p', p1, p2) = blend q r
-     in Sometimes p' (Choice p1 a1 b1) (Choice p2 a2 b2)
+viewEvent event dist@(Choice p aa bb) =
+  case (viewEvent event aa, viewEvent event bb) of
+    (Never _, Never _) -> Never dist
+    (Always _, Always _) -> Always dist
+    (Always a, Never b) -> Sometimes p a b
+    (Never a, Always b) -> Sometimes (1 - p) b a
+    (Sometimes q a1 a2, Never b) ->
+      let (p', _, p2) = blend q 0 in Sometimes p' a1 (Choice p2 a2 b)
+    (Sometimes q a1 a2, Always b) ->
+      let (p', p1, _) = blend q 1 in Sometimes p' (Choice p1 a1 b) a2
+    (Never a, Sometimes r b1 b2) ->
+      let (p', _, p2) = blend 0 r in Sometimes p' b1 (Choice p2 a b2)
+    (Always a, Sometimes r b1 b2) ->
+      let (p', p1, _) = blend 1 r in Sometimes p' (Choice p1 a b1) b2
+    (Sometimes q a1 a2, Sometimes r b1 b2) ->
+      let (p', p1, p2) = blend q r
+       in Sometimes p' (Choice p1 a1 b1) (Choice p2 a2 b2)
   where
     blend q r =
       let p' = p * q + (1 - p) * r
        in (p', p * q / p', p * (1 - q) / (1 - p'))
 
-fromEventView :: EventView prob a -> Distribution prob a
+-- | Converts from 'EventView' back to a 'Distribution'.  The resulting
+-- distribution is equivalent to the source distribution.
+fromEventView :: EventView prob s -> Distribution prob s
 fromEventView (Always dist) = dist
 fromEventView (Never dist) = dist
 fromEventView (Sometimes p a b) = Choice p a b
@@ -230,7 +245,7 @@ fromEventView (Sometimes p a b) = Choice p a b
 -- | Produces the conditional probability distribution, assuming some event.
 -- This function works for all distributions, but always produces an infinite
 -- distribution for non-trivial events.
-conditional :: (a -> Bool) -> Distribution prob a -> Distribution prob a
+conditional :: Event s -> Distribution prob s -> Distribution prob s
 conditional event dist = cdist
   where
     cdist = do
@@ -245,7 +260,7 @@ conditional event dist = cdist
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
 finiteConditional ::
-  Fractional prob => (a -> Bool) -> Distribution prob a -> Distribution prob a
+  Fractional prob => Event s -> Distribution prob s -> Distribution prob s
 finiteConditional event dist = categorical (map (first (/ p_event)) filtered)
   where
     filtered = filter (event . snd) (possibilities dist)
@@ -257,8 +272,8 @@ finiteConditional event dist = categorical (map (first (/ p_event)) filtered)
 -- This function works for all distributions, but always produces an infinite
 -- distribution for non-trivial events.
 bayesian ::
-  (param -> Distribution prob a) ->
-  (a -> Bool) ->
+  (param -> Distribution prob s) ->
+  Event s ->
   Distribution prob param ->
   Distribution prob param
 bayesian model event prior = posterior
@@ -275,9 +290,9 @@ bayesian model event prior = posterior
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
 finiteBayesian ::
-  (Eq prob, Fractional prob) =>
-  (param -> Distribution prob a) ->
-  (a -> Bool) ->
+  Fractional prob =>
+  (param -> Distribution prob s) ->
+  Event s ->
   Distribution prob param ->
   Distribution prob param
 finiteBayesian model event prior = case viewEvent (event . snd) withParam of
@@ -361,7 +376,7 @@ hypergeometric pop k n =
 -- | Poisson distribution.  Gives the number of independent events occurring in
 -- a fixed time interval, if events are occurring at the given expected rate per
 -- time interval.
-poisson :: (Floating prob, Integral a) => prob -> Distribution prob a
+poisson :: (Floating prob, Integral n) => prob -> Distribution prob n
 poisson lambda =
   categorical
     [ (lambda ^ k * exp (-lambda) / fromIntegral (product [1 .. k]), k)
@@ -373,7 +388,7 @@ poisson lambda =
 -- This only works for finite distributions.  Infinite distributions (including
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
-probability :: Num prob => (a -> Bool) -> Distribution prob a -> prob
+probability :: Num prob => Event s -> Distribution prob s -> prob
 probability event (Certainly x) = if event x then 1 else 0
 probability event (Choice p a b) =
   p * probability event a + (1 - p) * probability event b
@@ -382,7 +397,7 @@ probability event (Choice p a b) =
 -- probability.  This can be used on infinite distributions, for which the
 -- exact probability cannot be calculated.
 probabilityBounds ::
-  Num prob => (a -> Bool) -> Distribution prob a -> [(prob, prob)]
+  Num prob => Event s -> Distribution prob s -> [(prob, prob)]
 probabilityBounds event dist = go 0 1 (possibilities dist)
   where
     go p _ [] = [(p, p)]
@@ -396,8 +411,8 @@ probabilityBounds event dist = go 0 1 (possibilities dist)
 approxProbability ::
   (Ord prob, Fractional prob) =>
   prob ->
-  (a -> Bool) ->
-  Distribution prob a ->
+  Event s ->
+  Distribution prob s ->
   prob
 approxProbability epsilon event dist =
   (/ 2) . uncurry (+) . head . dropWhile ((> epsilon) . abs . uncurry (-)) $
@@ -473,10 +488,10 @@ relativeEntropy post prior = sum (term <$> Set.toList vals)
 -- even distributions with finitely many outcomes, but infinitely many paths to
 -- reach those outcomes) will hang.
 mutualInformation ::
-  (Eq prob, Floating prob, Ord b, Ord c) =>
-  (a -> b) ->
-  (a -> c) ->
-  Distribution prob a ->
+  (Eq prob, Floating prob, Ord a, Ord b) =>
+  RandVar s a ->
+  RandVar s b ->
+  Distribution prob s ->
   prob
 mutualInformation f g dist =
   sum (term <$> Map.keys f_probs <*> Map.keys g_probs)
