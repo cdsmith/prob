@@ -1,5 +1,7 @@
 # prob
 
+[![CI](https://github.com/cdsmith/prob/actions/workflows/ci.yml/badge.svg)](https://github.com/cdsmith/prob/actions/workflows/ci.yml)
+
 A monad for discrete probability distributions in Haskell.  The type
 `Distribution prob a` represents a probability distribution over values of `a`,
 with probability represented by the type `prob`.  The meaning is very similar to
