@@ -48,6 +48,7 @@ module Probability.Distribution
     viewEvent,
     fromEventView,
     finitize,
+    finitizeMaybe,
     conditional,
     finiteConditional,
     bayesian,
@@ -154,6 +155,21 @@ finitize epsilon = categorical . go 1 . possibilities
     go q ((p, x) : poss)
       | q - p < epsilon = [(q, x)]
       | otherwise = (p, x) : go (q - p) poss
+    go _ [] = []
+
+-- | Truncates an infinite distribution to make it finite.  This is equivalent
+-- to the original distribution, except with some arbitrary set of outcomes with
+-- probability less than epsilon replaced by Nothing.
+finitizeMaybe ::
+  (Fractional prob, Ord prob) =>
+  prob ->
+  Distribution prob a ->
+  Distribution prob (Maybe a)
+finitizeMaybe epsilon = categorical . go 1 . possibilities
+  where
+    go q ((p, x) : poss)
+      | q - p < epsilon = [(q, Nothing)]
+      | otherwise = (p, Just x) : go (q - p) poss
     go _ [] = []
 
 -- | Gives a map from outcomes to their probabilities in the given distribution.
